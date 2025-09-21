@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "AI PDF Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered assistant for reading and understanding PDF documents in your browser",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "file://*/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "AI PDF Assistant",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/chat-interface.html", "src/chat-interface.css", "src/chat-interface.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
