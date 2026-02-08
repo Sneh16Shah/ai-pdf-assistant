@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "ai-pdf-assistant-backend/proto";
+
+import "common.proto";
+import "document.proto";
+
+// Chat message
+message ChatMessage {
+  string id = 1;
+  string role = 2; // "user" or "assistant"
+  string content = 3;
+  int64 timestamp = 4;
+}
+
+// Chat session
+message ChatSession {
+  string id = 1;
+  string document_id = 2;
+  Document document = 3;
+  repeated ChatMessage messages = 4;
+  int64 created_at = 5;
+  int64 last_activity = 6;
+}
+
+// Chat message request
+message ChatRequest {
+  string session_id = 1;
+  string message = 2;
+}
+
+// Chat message response
+message ChatResponse {
+  Status status = 1;
+  string response = 2;
+  string session_id = 3;
+  repeated string relevant_chunks = 4; // For debugging/transparency
+  bool answer_found = 5; // Whether answer was found in document
+  Error error = 6;
+}
+
+// Chat history request
+message HistoryRequest {
+  string session_id = 1;
+}
+
+// Chat history response
+message HistoryResponse {
+  Status status = 1;
+  ChatSession session = 2;
+  Error error = 3;
+}
+
+// Clear session request
+message ClearSessionRequest {
+  string session_id = 1;
+}
+
+// Clear session response
+message ClearSessionResponse {
+  Status status = 1;
+  string message = 2;
+  Error error = 3;
+}
+

@@ -1,19 +1,46 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: ai-pdf-redis
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: askmypdf-backend
     ports:
-      - "6379:6379"
+      - "8081:8080"
+    environment:
+      - PORT=8080
+      - UPLOAD_DIR=/root/uploads
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - uploads_data:/root/uploads
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8081/api/v1
+    container_name: askmypdf-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 10s
 
 volumes:
-  redis_data:
+  uploads_data:

@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "ai-pdf-assistant-backend/proto";
+
+import "common.proto";
+
+// PDF Document representation
+message Document {
+  string id = 1;
+  string filename = 2;
+  string text = 3;
+  int32 pages = 4;
+  repeated Chunk chunks = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+// Text chunk for vector search
+message Chunk {
+  string id = 1;
+  string text = 2;
+  int32 chunk_index = 3;
+  int32 page_number = 4;
+  repeated float embedding = 5; // For future vector search
+}
+
+// Document upload request
+message UploadRequest {
+  string filename = 1;
+  bytes file_content = 2;
+}
+
+// Document upload response
+message UploadResponse {
+  Status status = 1;
+  Document document = 2;
+  string session_id = 3;
+  Error error = 4;
+}
+
+// Document status request
+message StatusRequest {
+  string document_id = 1;
+}
+
+// Document status response
+message StatusResponse {
+  Status status = 1;
+  Document document = 2;
+  Error error = 3;
+}
+
+// Summary request
+message SummaryRequest {
+  string session_id = 1;
+  string document_id = 2;
+}
+
+// Summary response
+message SummaryResponse {
+  Status status = 1;
+  string summary = 2;
+  repeated string key_takeaways = 3;
+  repeated string main_topics = 4;
+  Error error = 5;
+}
+
