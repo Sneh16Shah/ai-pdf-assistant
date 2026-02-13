@@ -1,10 +1,10 @@
 package usecases
 
 import (
-	"fmt"
 	"ai-pdf-assistant-backend/infrastructure/repositories"
 	"ai-pdf-assistant-backend/infrastructure/services"
 	"ai-pdf-assistant-backend/proto"
+	"fmt"
 )
 
 // ChatUseCase handles chat-related business logic
@@ -56,15 +56,38 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		}, nil
 	}
 
-	// Find relevant chunks using vector search
-	relevantChunks := uc.vectorSearch.FindRelevantChunks(session.Document.Chunks, req.Message, 5)
+	// Collect chunks from ALL documents in the session
+	var allChunks []*proto.Chunk
+	if len(session.Documents) > 0 {
+		for _, doc := range session.Documents {
+			allChunks = append(allChunks, doc.Chunks...)
+		}
+	} else if session.Document != nil {
+		allChunks = session.Document.Chunks
+	}
 
-	// Build context from relevant chunks
+	// Find the most relevant chunks for context (topK=20 for good coverage)
+	relevantChunks := uc.vectorSearch.FindRelevantChunks(allChunks, req.Message, 20)
+
+	// Build context from relevant chunks instead of all chunks to stay within token limits
 	context := uc.vectorSearch.BuildContext(relevantChunks)
 	if context == "" {
-		// Fallback to full document text if no chunks found
-		context = "Document Context:\n\n" + session.Document.Text
+		// Fallback: if no relevant chunks matched, use first ~15000 chars of document text
+		var fullText string
+		if len(session.Documents) > 0 {
+			for _, doc := range session.Documents {
+				fullText += "--- " + doc.Filename + " ---\n" + doc.Text + "\n\n"
+			}
+		} else if session.Document != nil {
+			fullText = session.Document.Text
+		}
+		if len(fullText) > 15000 {
+			fullText = fullText[:15000] + "\n... [truncated]"
+		}
+		context = "Document Context:\n\n" + fullText
 	}
+
+	// Use the same relevantChunks for citations
 
 	// Build conversation history (exclude the current user message we just added)
 	history := make([]string, 0)
@@ -113,12 +136,16 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		relevantChunkTexts[i] = chunkText
 	}
 
+	// Get citations for the relevant chunks
+	citations := uc.vectorSearch.GetCitations(relevantChunks)
+
 	return &proto.ChatResponse{
-		Status:        proto.Status_STATUS_SUCCESS,
+		Status:         proto.Status_STATUS_SUCCESS,
 		Response:       answer,
 		SessionId:      req.SessionId,
 		RelevantChunks: relevantChunkTexts,
 		AnswerFound:    answerFound,
+		Citations:      citations,
 	}, nil
 }
 
@@ -159,4 +186,3 @@ func (uc *ChatUseCase) ClearSession(sessionID string) (*proto.ClearSessionRespon
 		Message: "Session cleared successfully",
 	}, nil
 }
-

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ai-pdf-assistant-backend/proto"
+
 	"github.com/google/uuid"
 )
 
@@ -28,11 +29,12 @@ func (r *SessionRepository) Create(documentID string, document *proto.Document) 
 	defer r.mutex.Unlock()
 
 	session := &proto.ChatSession{
-		Id:        uuid.New().String(),
-		DocumentId: documentID,
-		Document:  document,
-		Messages:  []*proto.ChatMessage{},
-		CreatedAt: time.Now().Unix(),
+		Id:           uuid.New().String(),
+		DocumentId:   documentID,
+		Document:     document,
+		Documents:    []*proto.Document{document}, // Initialize with first document
+		Messages:     []*proto.ChatMessage{},
+		CreatedAt:    time.Now().Unix(),
 		LastActivity: time.Now().Unix(),
 	}
 
@@ -92,6 +94,64 @@ func (r *SessionRepository) ClearMessages(sessionID string) error {
 	return nil
 }
 
+// AddDocument adds a document to an existing session
+func (r *SessionRepository) AddDocument(sessionID string, document *proto.Document) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	session, exists := r.sessions[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Check if document already exists
+	for _, doc := range session.Documents {
+		if doc.Id == document.Id {
+			return fmt.Errorf("document already exists in session: %s", document.Id)
+		}
+	}
+
+	session.Documents = append(session.Documents, document)
+	session.LastActivity = time.Now().Unix()
+
+	return nil
+}
+
+// GetDocuments returns all documents in a session
+func (r *SessionRepository) GetDocuments(sessionID string) ([]*proto.Document, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	session, exists := r.sessions[sessionID]
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return session.Documents, nil
+}
+
+// RemoveDocument removes a document from a session
+func (r *SessionRepository) RemoveDocument(sessionID string, documentID string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	session, exists := r.sessions[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Find and remove document
+	for i, doc := range session.Documents {
+		if doc.Id == documentID {
+			session.Documents = append(session.Documents[:i], session.Documents[i+1:]...)
+			session.LastActivity = time.Now().Unix()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("document not found in session: %s", documentID)
+}
+
 // Delete removes a session
 func (r *SessionRepository) Delete(id string) error {
 	r.mutex.Lock()
@@ -123,4 +183,3 @@ func (r *SessionRepository) CleanupInactive(duration time.Duration) int {
 
 	return count
 }
-

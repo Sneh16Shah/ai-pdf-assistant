@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"ai-pdf-assistant-backend/database"
 	"ai-pdf-assistant-backend/handlers"
 	"ai-pdf-assistant-backend/infrastructure/repositories"
 	"ai-pdf-assistant-backend/infrastructure/services"
@@ -21,6 +22,14 @@ func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found, using defaults")
+	}
+
+	// Initialize database connection
+	if err := database.Connect(); err != nil {
+		log.Printf("Warning: Could not connect to database: %v", err)
+		log.Println("Continuing with in-memory storage...")
+	} else {
+		defer database.Close()
 	}
 
 	// Initialize repositories
@@ -58,9 +67,15 @@ func main() {
 	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch)
 	summaryUseCase := usecases.NewSummaryUseCase(sessionRepo, aiService)
 
+	// Initialize auth and persistence
+	userRepo := repositories.NewUserRepository()
+	authHandler := handlers.NewAuthHandler(userRepo)
+	persistenceRepo := repositories.NewPersistenceRepository()
+	userHandler := handlers.NewUserHandler(persistenceRepo)
+
 	// Initialize handlers
-	pdfHandler := handlers.NewPDFHandler(pdfUseCase)
-	chatHandler := handlers.NewChatHandler(chatUseCase)
+	pdfHandler := handlers.NewPDFHandler(pdfUseCase, persistenceRepo)
+	chatHandler := handlers.NewChatHandler(chatUseCase, persistenceRepo)
 	summaryHandler := handlers.NewSummaryHandler(summaryUseCase)
 
 	// Start session cleanup goroutine
@@ -81,25 +96,50 @@ func main() {
 	api := r.Group("/api/v1")
 	{
 		// Health check
-		api.GET("/health", func(c *gin.Context) {
+		healthHandler := func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"status":  "healthy",
 				"service": "AskMyPDF API",
 				"version": "1.0.0",
 			})
-		})
+		}
+		api.GET("/health", healthHandler)
+		api.HEAD("/health", healthHandler)
 
-		// PDF routes
+		// Auth routes (public)
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
+			auth.GET("/me", handlers.AuthMiddleware(), authHandler.Me)
+		}
+
+		// User routes (protected)
+		user := api.Group("/user")
+		user.Use(handlers.AuthMiddleware())
+		{
+			user.GET("/sessions", userHandler.GetSessions)
+			user.GET("/sessions/:sessionId/messages", userHandler.GetSessionMessages)
+			user.DELETE("/sessions/:sessionId", userHandler.DeleteSession)
+		}
+
+		// PDF routes (with optional auth to link sessions to users)
 		pdf := api.Group("/pdf")
+		pdf.Use(handlers.OptionalAuthMiddleware())
 		{
 			pdf.POST("/upload", pdfHandler.Upload)
 			pdf.GET("/status/:id", pdfHandler.Status)
+			pdf.GET("/session/:sessionId/documents", pdfHandler.ListSessionDocuments)
+			pdf.POST("/session/:sessionId/add", pdfHandler.AddToSession)
+			pdf.DELETE("/document/:documentId", pdfHandler.DeleteDocument)
 		}
 
-		// Chat routes
+		// Chat routes (with optional auth to persist messages)
 		chat := api.Group("/chat")
+		chat.Use(handlers.OptionalAuthMiddleware())
 		{
 			chat.POST("/message", chatHandler.Message)
+			chat.POST("/stream", chatHandler.Stream)
 			chat.GET("/history/:sessionId", chatHandler.History)
 			chat.DELETE("/session/:sessionId", chatHandler.ClearSession)
 		}

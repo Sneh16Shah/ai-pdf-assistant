@@ -56,9 +56,9 @@ func NewGroqService(apiKey string) *GroqService {
 	return &GroqService{
 		apiKey:  apiKey,
 		baseURL: "https://api.groq.com/openai/v1",
-		model:   "llama-3.1-8b-instant", // Fast and capable model
+		model:   "llama-3.3-70b-versatile", // 128K context window for full PDF support
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -100,6 +100,12 @@ Please answer questions about this document accurately and helpfully. If the ans
 }
 
 func (g *GroqService) ChatWithContext(pdfText, userQuestion string, conversationHistory []ChatMessage, sessionID string) (*ChatResponse, error) {
+	// Truncate context if it's extremely long (safety net for very large PDFs)
+	maxContextLen := 100000 // ~100K chars, well within 128K token limit
+	if len(pdfText) > maxContextLen {
+		pdfText = pdfText[:maxContextLen] + "\n... [content truncated due to length]"
+	}
+
 	// Build conversation with PDF context
 	messages := []GroqMessage{
 		{
@@ -120,7 +126,7 @@ Please answer questions about this document accurately and helpfully. Maintain c
 		if msg.Role == "assistant" {
 			role = "assistant"
 		}
-		
+
 		messages = append(messages, GroqMessage{
 			Role:    role,
 			Content: msg.Content,

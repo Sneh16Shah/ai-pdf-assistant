@@ -71,7 +71,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-8">
+          <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
             <p>Start a conversation by asking a question about your PDF</p>
           </div>
         )}
@@ -85,11 +85,11 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
             <div
               className={`max-w-[80%] rounded-lg p-4 ${message.role === 'user'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-800'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                 }`}
             >
               {message.role === 'assistant' ? (
-                <div className="prose max-w-none">
+                <div className="prose prose-sm dark:prose-invert max-w-none">
                   <ReactMarkdown>{message.content}</ReactMarkdown>
                 </div>
               ) : (
@@ -101,7 +101,7 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-lg p-4">
+            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4">
               <div className="flex space-x-2">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -115,14 +115,14 @@ export default function ChatInterface({ sessionId }: ChatInterfaceProps) {
       </div>
 
       {/* Input Form */}
-      <form onSubmit={handleSend} className="border-t p-4">
+      <form onSubmit={handleSend} className="border-t dark:border-gray-700 p-4">
         <div className="flex space-x-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your PDF..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={loading}
           />
           <button

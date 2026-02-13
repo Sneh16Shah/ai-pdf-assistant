@@ -9,6 +9,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 interface PDFViewerProps {
   pdfUrl: string;
   onTextSelect?: (text: string, pageNumber: number) => void;
+  targetPage?: number;
 }
 
 interface SelectionPosition {
@@ -16,26 +17,68 @@ interface SelectionPosition {
   y: number;
 }
 
-export default function PDFViewer({ pdfUrl, onTextSelect }: PDFViewerProps) {
+export default function PDFViewer({ pdfUrl, onTextSelect, targetPage }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
   const [selectedText, setSelectedText] = useState<string>('');
   const [selectionPosition, setSelectionPosition] = useState<SelectionPosition | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
-    setPageNumber(1);
+    pageRefs.current = new Array(numPages).fill(null);
   };
 
-  const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(prev - 1, 1));
+  // Handle external page navigation (from citations)
+  useEffect(() => {
+    if (targetPage && targetPage >= 1 && targetPage <= numPages) {
+      scrollToPage(targetPage);
+    }
+  }, [targetPage, numPages]);
+
+  const scrollToPage = (pageNum: number) => {
+    const pageElement = pageRefs.current[pageNum - 1];
+    if (pageElement && scrollContainerRef.current) {
+      pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
-  const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(prev + 1, numPages));
-  };
+  // Track current page based on scroll position
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef.current || numPages === 0) return;
+
+    const container = scrollContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const containerHeight = container.clientHeight;
+
+    // Find which page is most visible
+    for (let i = 0; i < pageRefs.current.length; i++) {
+      const pageEl = pageRefs.current[i];
+      if (pageEl) {
+        const rect = pageEl.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const pageTop = rect.top - containerRect.top;
+        const pageBottom = rect.bottom - containerRect.top;
+
+        // If page is visible in the top half of the container
+        if (pageTop < containerHeight / 2 && pageBottom > 0) {
+          setCurrentPage(i + 1);
+          break;
+        }
+      }
+    }
+  }, [numPages]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -43,16 +86,16 @@ export default function PDFViewer({ pdfUrl, onTextSelect }: PDFViewerProps) {
 
     if (text && text.length > 0) {
       setSelectedText(text);
-      
-      // Get selection position for popup
+
+      // Determine which page the selection is from
       const range = selection?.getRangeAt(0);
       const rect = range?.getBoundingClientRect();
-      
+
       if (rect && containerRef.current) {
         const containerRect = containerRef.current.getBoundingClientRect();
         setSelectionPosition({
           x: rect.left - containerRect.left + rect.width / 2,
-          y: rect.top - containerRect.top - 10,
+          y: rect.bottom - containerRect.top + 10,
         });
       }
     } else {
@@ -63,7 +106,7 @@ export default function PDFViewer({ pdfUrl, onTextSelect }: PDFViewerProps) {
 
   const handleAskAI = () => {
     if (selectedText && onTextSelect) {
-      onTextSelect(selectedText, pageNumber);
+      onTextSelect(selectedText, currentPage);
       setSelectedText('');
       setSelectionPosition(null);
       window.getSelection()?.removeAllRanges();
@@ -78,72 +121,71 @@ export default function PDFViewer({ pdfUrl, onTextSelect }: PDFViewerProps) {
   }, [handleTextSelection]);
 
   return (
-    <div ref={containerRef} className="relative flex flex-col h-full bg-gray-100">
+    <div ref={containerRef} className="relative flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white border-b shadow-sm">
+      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700 shadow-sm">
         <div className="flex items-center space-x-2">
-          <button
-            onClick={goToPrevPage}
-            disabled={pageNumber <= 1}
-            className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ← Prev
-          </button>
-          <span className="text-sm text-gray-600">
-            Page {pageNumber} of {numPages}
+          <span className="text-sm text-gray-600 dark:text-gray-400">
+            Page {currentPage} of {numPages}
           </span>
-          <button
-            onClick={goToNextPage}
-            disabled={pageNumber >= numPages}
-            className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next →
-          </button>
         </div>
-        
+
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setScale((s) => Math.max(s - 0.1, 0.5))}
-            className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
+            className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             −
           </button>
-          <span className="text-sm text-gray-600 w-16 text-center">
+          <span className="text-sm text-gray-600 dark:text-gray-400 w-16 text-center">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={() => setScale((s) => Math.min(s + 0.1, 2.0))}
-            className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
+            className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             +
           </button>
         </div>
       </div>
 
-      {/* PDF Content */}
-      <div className="flex-1 overflow-auto p-4 flex justify-center">
-        <Document
-          file={pdfUrl}
-          onLoadSuccess={onDocumentLoadSuccess}
-          loading={
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          }
-          error={
-            <div className="text-red-500 p-4">
-              Failed to load PDF. Please try again.
-            </div>
-          }
-        >
-          <Page
-            pageNumber={pageNumber}
-            scale={scale}
-            renderTextLayer={true}
-            renderAnnotationLayer={true}
-            className="shadow-lg"
-          />
-        </Document>
+      {/* PDF Content - Scrollable container with all pages */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-auto p-4"
+      >
+        <div className="flex flex-col items-center space-y-4">
+          <Document
+            file={pdfUrl}
+            onLoadSuccess={onDocumentLoadSuccess}
+            loading={
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            }
+            error={
+              <div className="text-red-500 dark:text-red-400 p-4">
+                Failed to load PDF. Please try again.
+              </div>
+            }
+          >
+            {Array.from(new Array(numPages), (_, index) => (
+              <div
+                key={`page_${index + 1}`}
+                ref={(el) => { pageRefs.current[index] = el; }}
+                className="mb-4"
+              >
+                <Page
+                  pageNumber={index + 1}
+                  scale={scale}
+                  renderTextLayer={true}
+                  renderAnnotationLayer={true}
+                  className="shadow-lg bg-white"
+                />
+              </div>
+            ))}
+          </Document>
+        </div>
       </div>
 
       {/* Ask AI Popup */}

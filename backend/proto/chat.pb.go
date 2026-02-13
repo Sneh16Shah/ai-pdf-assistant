@@ -13,7 +13,8 @@ type ChatMessage struct {
 type ChatSession struct {
 	Id           string         `json:"id"`
 	DocumentId   string         `json:"document_id"`
-	Document     *Document      `json:"document,omitempty"`
+	Document     *Document      `json:"document,omitempty"`  // Primary document (backwards compatible)
+	Documents    []*Document    `json:"documents,omitempty"` // All documents in session
 	Messages     []*ChatMessage `json:"messages"`
 	CreatedAt    int64          `json:"created_at"`
 	LastActivity int64          `json:"last_activity"`
@@ -27,12 +28,13 @@ type ChatRequest struct {
 
 // ChatResponse represents a chat message response
 type ChatResponse struct {
-	Status         Status   `json:"status"`
-	Response       string   `json:"response,omitempty"`
-	SessionId      string   `json:"session_id,omitempty"`
-	RelevantChunks []string `json:"relevant_chunks,omitempty"`
-	AnswerFound    bool     `json:"answer_found"`
-	Error          *Error   `json:"error,omitempty"`
+	Status         Status      `json:"status"`
+	Response       string      `json:"response,omitempty"`
+	SessionId      string      `json:"session_id,omitempty"`
+	RelevantChunks []string    `json:"relevant_chunks,omitempty"`
+	AnswerFound    bool        `json:"answer_found"`
+	Citations      interface{} `json:"citations,omitempty"`
+	Error          *Error      `json:"error,omitempty"`
 }
 
 // HistoryRequest represents a chat history request
@@ -58,4 +60,3 @@ type ClearSessionResponse struct {
 	Message string `json:"message,omitempty"`
 	Error   *Error `json:"error,omitempty"`
 }
-
