@@ -44,27 +44,48 @@ func main() {
 	pdfService := services.NewPDFService(uploadDir)
 	vectorSearch := services.NewVectorSearch()
 
-	// Initialize AI service (Groq, Puter AI, or Mock)
+	// Initialize AI service (Gemini > Groq > Puter AI > Mock)
 	var aiService services.AIService
 	groqAPIKey := os.Getenv("GROQ_API_KEY")
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 	puterAIURL := os.Getenv("PUTER_AI_URL")
 	puterAIKey := os.Getenv("PUTER_AI_KEY")
 
-	// Priority: Groq > Puter AI > Mock
-	if groqAPIKey != "" {
+	// Priority: Gemini > Groq > Puter AI > Mock
+	// Gemini 2.5 Flash-Lite: 1M context window, 1000 RPD, 15 RPM free
+	if geminiAPIKey != "" {
+		aiService = services.NewGeminiAIService(geminiAPIKey)
+		log.Println("Using Gemini AI service (2.5 Flash-Lite, 1M context)")
+	} else if groqAPIKey != "" {
 		aiService = services.NewGroqAIServiceAdapter(appservices.NewGroqService(groqAPIKey))
-		log.Println("Using Groq AI service")
+		log.Println("Using Groq AI service (fallback)")
 	} else if puterAIURL != "" || puterAIKey != "" {
 		aiService = services.NewPuterAIService()
 		log.Println("Using Puter AI service")
 	} else {
 		aiService = services.NewMockAIService()
-		log.Println("Using Mock AI service (set GROQ_API_KEY for real AI)")
+		log.Println("Using Mock AI service (set GEMINI_API_KEY for best experience)")
+	}
+
+	// Initialize vision service (uses Groq API with Llama 4 Scout)
+	var visionService *services.VisionService
+	if groqAPIKey != "" {
+		visionService = services.NewVisionService(groqAPIKey)
+		log.Println("Vision service enabled (Llama 4 Scout)")
+	}
+
+	// Initialize image generation service (Gemini 2.5 Flash Image)
+	var imageGenService *services.ImageGenService
+	if geminiAPIKey != "" {
+		imageGenService = services.NewImageGenService(geminiAPIKey)
+		log.Println("Image generation enabled (Gemini 2.5 Flash Image)")
+	} else {
+		log.Println("Image generation disabled (set GEMINI_API_KEY for AI diagrams)")
 	}
 
 	// Initialize use cases
 	pdfUseCase := usecases.NewPDFUseCase(docRepo, sessionRepo, pdfService)
-	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch)
+	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch, visionService, imageGenService)
 	summaryUseCase := usecases.NewSummaryUseCase(sessionRepo, aiService)
 
 	// Initialize auth and persistence
@@ -86,7 +107,23 @@ func main() {
 
 	// Configure CORS
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://localhost:80"}
+	config.AllowOriginFunc = func(origin string) bool {
+		// Allow localhost origins for web app
+		allowedOrigins := map[string]bool{
+			"http://localhost:3000": true,
+			"http://localhost:3001": true,
+			"http://localhost:5173": true,
+			"http://localhost:80":   true,
+		}
+		if allowedOrigins[origin] {
+			return true
+		}
+		// Allow Chrome extension origins
+		if len(origin) > 19 && origin[:19] == "chrome-extension://" {
+			return true
+		}
+		return false
+	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
 	config.AllowCredentials = true
@@ -132,6 +169,7 @@ func main() {
 			pdf.GET("/session/:sessionId/documents", pdfHandler.ListSessionDocuments)
 			pdf.POST("/session/:sessionId/add", pdfHandler.AddToSession)
 			pdf.DELETE("/document/:documentId", pdfHandler.DeleteDocument)
+			pdf.GET("/document/:documentId/download", pdfHandler.DownloadDocument)
 		}
 
 		// Chat routes (with optional auth to persist messages)

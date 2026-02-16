@@ -42,6 +42,8 @@ export interface ChatResponse {
   answer_found: boolean;
   relevant_chunks?: string[];
   citations?: Citation[];
+  image_base64?: string;
+  image_mime_type?: string;
 }
 
 export interface ChatMessage {
@@ -92,10 +94,19 @@ export const deleteDocument = async (sessionId: string, documentId: string): Pro
   await api.delete(`/pdf/document/${documentId}?session_id=${sessionId}`);
 };
 
-export const sendMessage = async (sessionId: string, message: string): Promise<ChatResponse> => {
+// Download the actual PDF file for a document (returns blob URL)
+export const downloadDocumentPDF = async (documentId: string): Promise<string> => {
+  const response = await api.get(`/pdf/document/${documentId}/download`, {
+    responseType: 'blob',
+  });
+  return URL.createObjectURL(response.data);
+};
+
+export const sendMessage = async (sessionId: string, message: string, pageNumber?: number): Promise<ChatResponse> => {
   const response = await api.post<ChatResponse>('/chat/message', {
     session_id: sessionId,
     message,
+    ...(pageNumber && { page_number: pageNumber }),
   });
 
   return response.data;

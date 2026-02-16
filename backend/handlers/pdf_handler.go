@@ -166,27 +166,47 @@ func (h *PDFHandler) Status(c *gin.Context) {
 func (h *PDFHandler) ListSessionDocuments(c *gin.Context) {
 	sessionID := c.Param("sessionId")
 
+	// Try in-memory session first
 	docs, err := h.pdfUseCase.GetSessionDocuments(sessionID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": err.Error(),
+	if err == nil && len(docs) > 0 {
+		// Convert documents to a simpler format
+		documents := make([]gin.H, len(docs))
+		for i, doc := range docs {
+			documents[i] = gin.H{
+				"id":       doc.Id,
+				"filename": doc.Filename,
+				"pages":    doc.Pages,
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"documents": documents,
+			"count":     len(documents),
 		})
 		return
 	}
 
-	// Convert documents to a simpler format
-	documents := make([]gin.H, len(docs))
-	for i, doc := range docs {
-		documents[i] = gin.H{
-			"id":       doc.Id,
-			"filename": doc.Filename,
-			"pages":    doc.Pages,
+	// Fall back to database for persisted sessions (e.g., resumed sessions)
+	if h.persistenceRepo != nil {
+		dbDocs, dbErr := h.persistenceRepo.GetSessionDocuments(sessionID)
+		if dbErr == nil && len(dbDocs) > 0 {
+			documents := make([]gin.H, len(dbDocs))
+			for i, doc := range dbDocs {
+				documents[i] = gin.H{
+					"id":       doc.ID,
+					"filename": doc.Filename,
+					"pages":    doc.Pages,
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"documents": documents,
+				"count":     len(documents),
+			})
+			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"documents": documents,
-		"count":     len(documents),
+	c.JSON(http.StatusNotFound, gin.H{
+		"error": "Session not found or has no documents",
 	})
 }
 
@@ -297,4 +317,36 @@ func (h *PDFHandler) DeleteDocument(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Document removed successfully",
 	})
+}
+
+// DownloadDocument serves the stored PDF file for a given document ID
+func (h *PDFHandler) DownloadDocument(c *gin.Context) {
+	documentID := c.Param("documentId")
+
+	doc, err := h.persistenceRepo.GetDocumentByID(documentID)
+	if err != nil || doc == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Document not found",
+		})
+		return
+	}
+
+	if doc.FilePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "File path not available",
+		})
+		return
+	}
+
+	// Check if file exists on disk
+	if _, err := os.Stat(doc.FilePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "File not found on disk",
+		})
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "inline; filename=\""+doc.Filename+"\"")
+	c.File(doc.FilePath)
 }

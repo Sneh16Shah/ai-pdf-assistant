@@ -31,6 +31,7 @@ services:
       - PORT=8080
       - UPLOAD_DIR=/root/uploads
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - DATABASE_URL=postgres://askmypdf:${POSTGRES_PASSWORD}@postgres:5432/askmypdf?sslmode=disable
       - JWT_SECRET=${JWT_SECRET}
     volumes:

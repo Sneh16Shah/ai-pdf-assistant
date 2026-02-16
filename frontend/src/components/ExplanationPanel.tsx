@@ -24,6 +24,7 @@ export default function ExplanationPanel({
     const [loading, setLoading] = useState(false);
     const [explanation, setExplanation] = useState<string | null>(null);
     const [citations, setCitations] = useState<Citation[]>([]);
+    const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const previousTextRef = useRef<string>('');
     const loadedSessionRef = useRef<string>('');
@@ -48,69 +49,25 @@ export default function ExplanationPanel({
         }
     }, [sessionId]);
 
-    useEffect(() => {
-        // Only call explainText if text actually changed and panel is open
-        if (selectedText && isOpen && selectedText !== previousTextRef.current) {
-            previousTextRef.current = selectedText;
-            explainText(selectedText);
-        }
-    }, [selectedText, isOpen]);
+    // Shared function to send a chat message (used by both Ask AI and manual Send)
+    const sendChatMessage = async (message: string) => {
+        if (!message.trim() || loading) return;
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, explanation]);
-
-    const explainText = async (text: string) => {
-        setLoading(true);
-        setExplanation(null);
-        setCitations([]);
-
-        const query = `Please explain the following text from page ${pageNumber || 'unknown'}:\n\n"${text}"`;
-
-        try {
-            const response = await sendMessage(sessionId, query);
-            setExplanation(response.response);
-            if (response.citations) {
-                setCitations(response.citations);
-            }
-            setMessages((prev) => [
-                ...prev,
-                { role: 'user', content: `Explain: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"` },
-                { role: 'assistant', content: response.response },
-            ]);
-            setLoading(false);
-        } catch (error: unknown) {
-            let errorMessage = 'Failed to get explanation';
-            if (error instanceof Error) {
-                if (error.message.includes('404')) {
-                    errorMessage = 'Session expired. Please re-upload your PDF to start a new session.';
-                } else {
-                    errorMessage = error.message;
-                }
-            }
-            setExplanation(`Error: ${errorMessage}`);
-            setLoading(false);
-        }
-    };
-
-    const handleSendFollowUp = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || loading) return;
-
-        const userMessage: ChatMessage = { role: 'user', content: input };
+        const userMessage: ChatMessage = { role: 'user', content: message };
         setMessages((prev) => [...prev, userMessage]);
         setInput('');
         setLoading(true);
 
         try {
-            const response = await sendMessage(sessionId, input);
+            const response = await sendMessage(sessionId, message, pageNumber || undefined);
             setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
             if (response.citations) {
                 setCitations(response.citations);
+            }
+            if (response.image_base64 && response.image_mime_type) {
+                setGeneratedImage({ base64: response.image_base64, mimeType: response.image_mime_type });
+            } else {
+                setGeneratedImage(null);
             }
             setLoading(false);
         } catch (error: unknown) {
@@ -121,6 +78,32 @@ export default function ExplanationPanel({
             ]);
             setLoading(false);
         }
+    };
+
+    useEffect(() => {
+        // When text is selected via "Ask AI", auto-send it as a normal chat message
+        if (selectedText && isOpen && selectedText !== previousTextRef.current) {
+            previousTextRef.current = selectedText;
+            const truncated = selectedText.length > 300 ? selectedText.substring(0, 300) + '...' : selectedText;
+            const prompt = `"${truncated}"\n\nExplain this.`;
+            sendChatMessage(prompt);
+        }
+    }, [selectedText, isOpen, sessionId, pageNumber, loading]); // Added dependencies for sendChatMessage
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, explanation]);
+
+
+
+
+    const handleSendFollowUp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        sendChatMessage(input);
     };
 
     const handleCitationClick = (page: number) => {
@@ -154,15 +137,6 @@ export default function ExplanationPanel({
                 </div>
             </div>
 
-            {/* Selected Text */}
-            {selectedText && (
-                <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/30 border-b dark:border-gray-700">
-                    <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">
-                        Selected from page {pageNumber}:
-                    </p>
-                    <p className="text-sm text-gray-700 dark:text-gray-300 italic line-clamp-3">"{selectedText}"</p>
-                </div>
-            )}
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -186,6 +160,37 @@ export default function ExplanationPanel({
                         <div className="prose prose-sm dark:prose-invert max-w-none">
                             <ReactMarkdown>{explanation}</ReactMarkdown>
                         </div>
+                    </div>
+                )}
+
+                {/* AI-Generated Image */}
+                {generatedImage && (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-xs font-medium text-purple-600 dark:text-purple-400">AI-Generated Diagram</span>
+                        </div>
+                        <img
+                            src={`data:${generatedImage.mimeType};base64,${generatedImage.base64}`}
+                            alt="AI-generated diagram"
+                            className="w-full rounded-md border border-gray-200 dark:border-gray-600"
+                        />
+                        <button
+                            onClick={() => {
+                                const link = document.createElement('a');
+                                link.href = `data:${generatedImage.mimeType};base64,${generatedImage.base64}`;
+                                link.download = 'ai-diagram.png';
+                                link.click();
+                            }}
+                            className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Download image
+                        </button>
                     </div>
                 )}
 

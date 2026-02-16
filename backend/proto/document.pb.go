@@ -8,6 +8,7 @@ type Document struct {
 	Text      string   `json:"text"`
 	Pages     int32    `json:"pages"`
 	Chunks    []*Chunk `json:"chunks"`
+	Outline   string   `json:"outline,omitempty"`   // Lightweight structural summary
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
 }

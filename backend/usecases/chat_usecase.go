@@ -9,9 +9,12 @@ import (
 
 // ChatUseCase handles chat-related business logic
 type ChatUseCase struct {
-	sessionRepo  *repositories.SessionRepository
-	aiService    services.AIService
-	vectorSearch *services.VectorSearch
+	sessionRepo     *repositories.SessionRepository
+	aiService       services.AIService
+	vectorSearch    *services.VectorSearch
+	contextBuilder  *ContextBuilder
+	visionService   *services.VisionService
+	imageGenService *services.ImageGenService
 }
 
 // NewChatUseCase creates a new chat use case
@@ -19,11 +22,16 @@ func NewChatUseCase(
 	sessionRepo *repositories.SessionRepository,
 	aiService services.AIService,
 	vectorSearch *services.VectorSearch,
+	visionService *services.VisionService,
+	imageGenService *services.ImageGenService,
 ) *ChatUseCase {
 	return &ChatUseCase{
-		sessionRepo:  sessionRepo,
-		aiService:    aiService,
-		vectorSearch: vectorSearch,
+		sessionRepo:     sessionRepo,
+		aiService:       aiService,
+		vectorSearch:    vectorSearch,
+		contextBuilder:  NewContextBuilder(vectorSearch),
+		visionService:   visionService,
+		imageGenService: imageGenService,
 	}
 }
 
@@ -56,38 +64,29 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		}, nil
 	}
 
-	// Collect chunks from ALL documents in the session
+	// Collect chunks and full text from ALL documents in the session
 	var allChunks []*proto.Chunk
+	var fullText string
+	var outline string
 	if len(session.Documents) > 0 {
 		for _, doc := range session.Documents {
 			allChunks = append(allChunks, doc.Chunks...)
+			fullText += "--- " + doc.Filename + " ---\n" + doc.Text + "\n\n"
+			if doc.Outline != "" {
+				outline += "=== " + doc.Filename + " ===\n" + doc.Outline + "\n"
+			}
 		}
 	} else if session.Document != nil {
 		allChunks = session.Document.Chunks
+		fullText = session.Document.Text
+		outline = session.Document.Outline
 	}
 
-	// Find the most relevant chunks for context (topK=20 for good coverage)
-	relevantChunks := uc.vectorSearch.FindRelevantChunks(allChunks, req.Message, 20)
+	// Build context using tiered strategy (page-aware, with budget)
+	context := uc.contextBuilder.BuildContext(allChunks, fullText, outline, req.Message, req.PageNumber)
 
-	// Build context from relevant chunks instead of all chunks to stay within token limits
-	context := uc.vectorSearch.BuildContext(relevantChunks)
-	if context == "" {
-		// Fallback: if no relevant chunks matched, use first ~15000 chars of document text
-		var fullText string
-		if len(session.Documents) > 0 {
-			for _, doc := range session.Documents {
-				fullText += "--- " + doc.Filename + " ---\n" + doc.Text + "\n\n"
-			}
-		} else if session.Document != nil {
-			fullText = session.Document.Text
-		}
-		if len(fullText) > 15000 {
-			fullText = fullText[:15000] + "\n... [truncated]"
-		}
-		context = "Document Context:\n\n" + fullText
-	}
-
-	// Use the same relevantChunks for citations
+	// Get relevant chunks for citations
+	relevantChunks := uc.vectorSearch.FindRelevantChunks(allChunks, req.Message, 10)
 
 	// Build conversation history (exclude the current user message we just added)
 	history := make([]string, 0)
@@ -101,6 +100,34 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		} else if msg.Role == "assistant" {
 			history = append(history, "Assistant: "+msg.Content)
 		}
+	}
+
+	// Check if this is an image generation request
+	var imageBase64, imageMimeType string
+	if services.IsImageGenRequest(req.Message) && uc.imageGenService != nil && uc.imageGenService.IsAvailable() {
+		fmt.Printf("INFO: Detected image generation request, using Gemini\n")
+		result, err := uc.imageGenService.GenerateImageFromContext(req.Message, context)
+		if err != nil {
+			fmt.Printf("WARNING: Image generation failed: %v, falling back to text\n", err)
+		} else if result != nil {
+			imageBase64 = result.ImageBase64
+			imageMimeType = result.MimeType
+			if result.TextReply != "" {
+				// If Gemini returned text alongside the image, use it
+				context = context + "\n\nDiagram Generation Note: " + result.TextReply
+			}
+		}
+	}
+
+	// Check if this is a diagram question (and we have vision capabilities)
+	if services.IsDiagramQuestion(req.Message) && uc.visionService != nil && imageBase64 == "" {
+		fmt.Printf("INFO: Detected diagram question, vision model available for page %d\n", req.PageNumber)
+		// Note: Vision requires a rendered page image. For now, we enhance the text prompt
+		// to indicate the AI should describe any diagrams. Full image rendering will be
+		// added when we integrate a PDF-to-image renderer.
+		context = context + "\n\nNote: The user is asking about a visual element (diagram/chart/table). " +
+			"If the text context describes a diagram or visual structure, explain it in detail. " +
+			"Describe the components, relationships, and flow shown in the visual element."
 	}
 
 	// Get AI response
@@ -146,6 +173,8 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		RelevantChunks: relevantChunkTexts,
 		AnswerFound:    answerFound,
 		Citations:      citations,
+		ImageBase64:    imageBase64,
+		ImageMimeType:  imageMimeType,
 	}, nil
 }
 

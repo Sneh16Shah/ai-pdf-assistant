@@ -6,8 +6,15 @@ import (
 	"strings"
 
 	"ai-pdf-assistant-backend/proto"
+
 	"github.com/google/uuid"
 	"github.com/ledongthuc/pdf"
+)
+
+const (
+	maxChunkSize  = 1500 // Characters per chunk
+	overlapSize   = 200  // Overlap between page boundaries
+	outlineMaxLen = 100  // Max chars per page in outline
 )
 
 // PDFService handles PDF parsing and text extraction
@@ -21,7 +28,7 @@ func NewPDFService(uploadDir string) *PDFService {
 	return &PDFService{uploadDir: uploadDir}
 }
 
-// ProcessPDF extracts text from a PDF file and creates chunks
+// ProcessPDF extracts text from a PDF file and creates page-aware chunks
 func (s *PDFService) ProcessPDF(filePath string, filename string) (*proto.Document, error) {
 	// Open the PDF file
 	file, reader, err := pdf.Open(filePath)
@@ -30,10 +37,13 @@ func (s *PDFService) ProcessPDF(filePath string, filename string) (*proto.Docume
 	}
 	defer file.Close()
 
-	var textBuilder strings.Builder
 	totalPages := reader.NumPage()
 
-	// Extract text from all pages
+	// Phase 1: Extract text per page
+	pageTexts := make(map[int32]string, totalPages)
+	var fullTextBuilder strings.Builder
+	var outlineBuilder strings.Builder
+
 	for pageNum := 1; pageNum <= totalPages; pageNum++ {
 		page := reader.Page(pageNum)
 		if page.V.IsNull() {
@@ -45,43 +55,82 @@ func (s *PDFService) ProcessPDF(filePath string, filename string) (*proto.Docume
 			continue // Skip pages with extraction errors
 		}
 
-		textBuilder.WriteString(text)
-		textBuilder.WriteString("\n\n")
+		trimmedText := strings.TrimSpace(text)
+		if trimmedText == "" {
+			continue
+		}
+
+		pageTexts[int32(pageNum)] = trimmedText
+		fullTextBuilder.WriteString(trimmedText)
+		fullTextBuilder.WriteString("\n\n")
+
+		// Build outline: first ~100 chars of each page
+		outlineLine := trimmedText
+		if len(outlineLine) > outlineMaxLen {
+			outlineLine = outlineLine[:outlineMaxLen] + "..."
+		}
+		outlineBuilder.WriteString(fmt.Sprintf("Page %d: %s\n", pageNum, outlineLine))
 	}
 
-	extractedText := textBuilder.String()
+	extractedText := fullTextBuilder.String()
 	if strings.TrimSpace(extractedText) == "" {
 		return nil, fmt.Errorf("no text could be extracted from PDF")
 	}
 
-	// Create chunks
-	chunks := s.chunkText(extractedText, 2000) // 2000 character chunks
-	protoChunks := make([]*proto.Chunk, len(chunks))
+	// Phase 2: Create page-aware chunks with overlap
+	var allChunks []*proto.Chunk
+	chunkIndex := 0
+	var prevPageLastText string // For overlap between pages
 
-	for i, chunkText := range chunks {
-		protoChunks[i] = &proto.Chunk{
-			Id:         uuid.New().String(),
-			Text:       chunkText,
-			ChunkIndex: int32(i),
-			PageNumber: 1, // Simplified - could track actual page
+	for pageNum := int32(1); pageNum <= int32(totalPages); pageNum++ {
+		pageText, exists := pageTexts[pageNum]
+		if !exists {
+			continue
 		}
+
+		// Prepend overlap from previous page to first chunk of this page
+		textToChunk := pageText
+		if prevPageLastText != "" && len(prevPageLastText) > 0 {
+			overlapText := prevPageLastText
+			if len(overlapText) > overlapSize {
+				overlapText = overlapText[len(overlapText)-overlapSize:]
+			}
+			textToChunk = overlapText + " " + textToChunk
+		}
+
+		// Chunk this page's text
+		pageChunks := s.chunkText(textToChunk, maxChunkSize)
+
+		for _, chunkText := range pageChunks {
+			allChunks = append(allChunks, &proto.Chunk{
+				Id:         uuid.New().String(),
+				Text:       chunkText,
+				ChunkIndex: int32(chunkIndex),
+				PageNumber: pageNum,
+			})
+			chunkIndex++
+		}
+
+		// Store last portion of this page for next page's overlap
+		prevPageLastText = pageText
 	}
 
-	// Create document
+	// Create document with outline
 	doc := &proto.Document{
 		Id:       uuid.New().String(),
 		Filename: filename,
 		Text:     extractedText,
 		Pages:    int32(totalPages),
-		Chunks:   protoChunks,
+		Chunks:   allChunks,
+		Outline:  outlineBuilder.String(),
 	}
 
 	return doc, nil
 }
 
 // chunkText splits text into chunks of approximately maxChunkSize characters
-func (s *PDFService) chunkText(text string, maxChunkSize int) []string {
-	if len(text) <= maxChunkSize {
+func (s *PDFService) chunkText(text string, chunkSize int) []string {
+	if len(text) <= chunkSize {
 		return []string{text}
 	}
 
@@ -92,7 +141,7 @@ func (s *PDFService) chunkText(text string, maxChunkSize int) []string {
 
 	for _, word := range words {
 		// Check if adding this word would exceed the limit
-		if currentChunk.Len()+len(word)+1 > maxChunkSize && currentChunk.Len() > 0 {
+		if currentChunk.Len()+len(word)+1 > chunkSize && currentChunk.Len() > 0 {
 			chunks = append(chunks, strings.TrimSpace(currentChunk.String()))
 			currentChunk.Reset()
 		}
@@ -110,4 +159,3 @@ func (s *PDFService) chunkText(text string, maxChunkSize int) []string {
 
 	return chunks
 }
-

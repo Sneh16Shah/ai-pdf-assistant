@@ -22,8 +22,9 @@ type ChatSession struct {
 
 // ChatRequest represents a chat message request
 type ChatRequest struct {
-	SessionId string `json:"session_id"`
-	Message   string `json:"message"`
+	SessionId  string `json:"session_id"`
+	Message    string `json:"message"`
+	PageNumber int32  `json:"page_number,omitempty"`
 }
 
 // ChatResponse represents a chat message response
@@ -34,6 +35,8 @@ type ChatResponse struct {
 	RelevantChunks []string    `json:"relevant_chunks,omitempty"`
 	AnswerFound    bool        `json:"answer_found"`
 	Citations      interface{} `json:"citations,omitempty"`
+	ImageBase64    string      `json:"image_base64,omitempty"`    // AI-generated image (base64)
+	ImageMimeType  string      `json:"image_mime_type,omitempty"` // e.g., "image/png"
 	Error          *Error      `json:"error,omitempty"`
 }
 

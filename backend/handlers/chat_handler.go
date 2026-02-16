@@ -30,8 +30,9 @@ func NewChatHandler(chatUseCase *usecases.ChatUseCase, persistenceRepo *reposito
 // Message handles chat message requests
 func (h *ChatHandler) Message(c *gin.Context) {
 	var jsonReq struct {
-		SessionID string `json:"session_id" binding:"required"`
-		Message   string `json:"message" binding:"required"`
+		SessionID  string `json:"session_id" binding:"required"`
+		Message    string `json:"message" binding:"required"`
+		PageNumber int32  `json:"page_number"`
 	}
 
 	if err := c.ShouldBindJSON(&jsonReq); err != nil {
@@ -43,8 +44,9 @@ func (h *ChatHandler) Message(c *gin.Context) {
 
 	// Convert JSON to Protobuf
 	req := &proto.ChatRequest{
-		SessionId: jsonReq.SessionID,
-		Message:   jsonReq.Message,
+		SessionId:  jsonReq.SessionID,
+		Message:    jsonReq.Message,
+		PageNumber: jsonReq.PageNumber,
 	}
 
 	// Call use case
@@ -103,6 +105,8 @@ func (h *ChatHandler) Message(c *gin.Context) {
 		"answer_found":    resp.AnswerFound,
 		"relevant_chunks": resp.RelevantChunks,
 		"citations":       resp.Citations,
+		"image_base64":    resp.ImageBase64,
+		"image_mime_type": resp.ImageMimeType,
 	})
 }
 
@@ -182,8 +186,9 @@ func (h *ChatHandler) ClearSession(c *gin.Context) {
 // Stream handles SSE streaming chat requests
 func (h *ChatHandler) Stream(c *gin.Context) {
 	var jsonReq struct {
-		SessionID string `json:"session_id" binding:"required"`
-		Message   string `json:"message" binding:"required"`
+		SessionID  string `json:"session_id" binding:"required"`
+		Message    string `json:"message" binding:"required"`
+		PageNumber int32  `json:"page_number"`
 	}
 
 	if err := c.ShouldBindJSON(&jsonReq); err != nil {
@@ -201,8 +206,9 @@ func (h *ChatHandler) Stream(c *gin.Context) {
 
 	// Convert JSON to Protobuf
 	req := &proto.ChatRequest{
-		SessionId: jsonReq.SessionID,
-		Message:   jsonReq.Message,
+		SessionId:  jsonReq.SessionID,
+		Message:    jsonReq.Message,
+		PageNumber: jsonReq.PageNumber,
 	}
 
 	// Get response from use case (non-streaming for now, but we'll stream to client)

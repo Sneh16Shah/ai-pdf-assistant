@@ -212,3 +212,20 @@ func (r *PersistenceRepository) DeleteDocument(documentID string) error {
 	_, err := database.DB.Exec(`DELETE FROM documents WHERE id = $1`, documentID)
 	return err
 }
+
+// GetDocumentByID returns a single document by its ID
+func (r *PersistenceRepository) GetDocumentByID(documentID string) (*DBDocument, error) {
+	if !database.IsConnected() {
+		return nil, nil
+	}
+
+	var d DBDocument
+	err := database.DB.QueryRow(`
+		SELECT id, session_id, filename, COALESCE(file_path, ''), pages, chunks_count, uploaded_at
+		FROM documents WHERE id = $1
+	`, documentID).Scan(&d.ID, &d.SessionID, &d.Filename, &d.FilePath, &d.Pages, &d.ChunksCount, &d.UploadedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
