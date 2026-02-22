@@ -108,25 +108,39 @@ export default function App() {
     }
   }, [isAuthenticated, isLoading, resumeSession, sessionId]);
 
-  const handleUploadSuccess = (data: UploadResponse, file: File) => {
-    // Set session ID (only changes on first upload)
-    if (!sessionId) {
+  const sessionIdRef = useRef(sessionId);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  const activeDocIdRef = useRef(activeDocumentId);
+  useEffect(() => { activeDocIdRef.current = activeDocumentId; }, [activeDocumentId]);
+
+  const handleUploadSuccess = useCallback((data: UploadResponse, file: File) => {
+    const isNewSession = data.session_id !== sessionIdRef.current;
+
+    if (isNewSession) {
       setSessionId(data.session_id);
+      if (window.location.hash !== `#session/${data.session_id}`) {
+        window.location.hash = `#session/${data.session_id}`;
+      }
     }
 
     const url = URL.createObjectURL(file);
 
-    // Add to documents array (append, don't replace)
     const newDoc: SessionDocument = {
       id: data.document_id,
       filename: data.filename,
       pages: data.pages,
     };
-    setDocuments(prev => [...prev, newDoc]);
-    setPdfUrls(prev => ({ ...prev, [data.document_id]: url }));
 
-    // Only set as active if it's the first document
-    if (!activeDocumentId) {
+    if (isNewSession) {
+      setDocuments([newDoc]);
+      setPdfUrls({ [data.document_id]: url });
+    } else {
+      setDocuments(prev => [...prev, newDoc]);
+      setPdfUrls(prev => ({ ...prev, [data.document_id]: url }));
+    }
+
+    if (!activeDocIdRef.current || isNewSession) {
       setActiveDocumentId(data.document_id);
       setDocumentInfo(data);
       setPdfUrl(url);
@@ -134,7 +148,7 @@ export default function App() {
       setIsPanelOpen(false);
       setSelectedText(null);
     }
-  };
+  }, []);
 
   // Handle adding more PDFs to session
   const handleAddMorePdfs = () => {

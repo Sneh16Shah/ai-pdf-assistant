@@ -45,19 +45,30 @@
     });
     saveUrlBtn.addEventListener('click', handleSaveUrl);
     openWebsiteBtn.addEventListener('click', async () => {
-        // Derive website URL from API URL (default: http://127.0.0.1:3001)
+        const isDevMode = !('update_url' in chrome.runtime.getManifest());
+        const defaultFrontendUrl = isDevMode ? 'http://localhost:3001' : 'https://ai-pdf-assistant-z6lh.onrender.com';
+
         try {
             const result = await chrome.runtime.sendMessage({ type: 'GET_API_URL' });
-            const apiUrl = result.apiUrl || 'http://127.0.0.1:8081/api/v1';
-            const url = new URL(apiUrl);
-            let websiteUrl = `${url.protocol}//${url.hostname}:3001`;
+            let websiteUrl = defaultFrontendUrl;
+
+            // If the user has a custom API URL that differs from our known production/dev URLs
+            if (result.apiUrl &&
+                !result.apiUrl.includes('ai-pdf-assistant-backend-x8jo.onrender.com') &&
+                !result.apiUrl.includes('localhost:8081') &&
+                !result.apiUrl.includes('127.0.0.1:8081')) {
+                // Try to guess the custom frontend
+                const url = new URL(result.apiUrl);
+                websiteUrl = `${url.protocol}//${url.hostname}:3001`;
+            }
+
             // Append session hash for deep linking
             if (sessionId) {
-                websiteUrl += `#session/${sessionId}`;
+                websiteUrl += `/#session/${sessionId}`;
             }
             chrome.tabs.create({ url: websiteUrl });
         } catch {
-            chrome.tabs.create({ url: 'http://127.0.0.1:3001' });
+            chrome.tabs.create({ url: defaultFrontendUrl });
         }
     });
 

@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AskMyPDF</title>
   <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <div class="popup">
     <!-- Header -->
     <div class="header">
       <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        <path
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
       <h1>AskMyPDF</h1>
     </div>
@@ -42,7 +45,7 @@
       <div id="settings-panel" class="settings hidden">
         <div class="field">
           <label for="api-url">API URL</label>
-          <input type="url" id="api-url" placeholder="http://localhost:8081/api/v1">
+          <input type="url" id="api-url" placeholder="https://ai-pdf-assistant-backend-x8jo.onrender.com/api/v1">
         </div>
         <button id="save-url" class="btn small">Save</button>
       </div>
@@ -65,4 +68,5 @@
 
   <script src="popup.js"></script>
 </body>
+
 </html>

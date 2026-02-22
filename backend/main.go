@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"ai-pdf-assistant-backend/database"
@@ -108,7 +109,17 @@ func main() {
 	// Configure CORS
 	config := cors.DefaultConfig()
 	config.AllowOriginFunc = func(origin string) bool {
-		// Allow localhost origins for web app
+		// 1. Allow origins specified in ALLOWED_ORIGINS env var (e.g., "https://my-frontend.onrender.com")
+		envOrigins := os.Getenv("ALLOWED_ORIGINS")
+		if envOrigins != "" {
+			for _, allowed := range strings.Split(envOrigins, ",") {
+				if strings.TrimSpace(allowed) == origin {
+					return true
+				}
+			}
+		}
+
+		// 2. Allow localhost origins for local development
 		allowedOrigins := map[string]bool{
 			"http://localhost:3000": true,
 			"http://localhost:3001": true,
@@ -118,10 +129,12 @@ func main() {
 		if allowedOrigins[origin] {
 			return true
 		}
-		// Allow Chrome extension origins
+
+		// 3. Allow Chrome extension origins
 		if len(origin) > 19 && origin[:19] == "chrome-extension://" {
 			return true
 		}
+
 		return false
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}

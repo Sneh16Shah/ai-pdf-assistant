@@ -1,7 +1,11 @@
 // AskMyPDF Chrome Extension — Background Service Worker
 // Manages auth, API communication, PDF upload, Side Panel, and context menus.
 
-const DEFAULT_API_URL = 'http://localhost:8081/api/v1';
+// Environment detection: if 'update_url' is missing, it's loaded as "unpacked" (developer mode)
+const isDevMode = !('update_url' in chrome.runtime.getManifest());
+const DEFAULT_API_URL = isDevMode
+    ? 'http://localhost:8081/api/v1'
+    : 'https://ai-pdf-assistant-backend-x8jo.onrender.com/api/v1';
 
 // ─── Side Panel Setup ───────────────────────────────────────────────
 // Click the toolbar icon → open the side panel
