@@ -75,14 +75,9 @@ func main() {
 		log.Println("Vision service enabled (Llama 4 Scout)")
 	}
 
-	// Initialize image generation service (Gemini 2.5 Flash Image)
-	var imageGenService *services.ImageGenService
-	if geminiAPIKey != "" {
-		imageGenService = services.NewImageGenService(geminiAPIKey)
-		log.Println("Image generation enabled (Gemini 2.5 Flash Image)")
-	} else {
-		log.Println("Image generation disabled (set GEMINI_API_KEY for AI diagrams)")
-	}
+	// Initialize image generation service (Pollinations.ai — free, no API key needed)
+	imageGenService := services.NewImageGenService("")
+	log.Println("Image generation enabled (Pollinations.ai)")
 
 	// Initialize use cases
 	pdfUseCase := usecases.NewPDFUseCase(docRepo, sessionRepo, pdfService)

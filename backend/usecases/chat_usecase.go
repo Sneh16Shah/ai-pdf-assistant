@@ -106,7 +106,7 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 	// Check if this is an image generation request
 	var imageBase64, imageMimeType string
 	if services.IsImageGenRequest(req.Message) && uc.imageGenService != nil && uc.imageGenService.IsAvailable() {
-		fmt.Printf("INFO: Detected image generation request, using Gemini\n")
+		fmt.Printf("INFO: Detected image generation request, using Pollinations.ai\n")
 		result, err := uc.imageGenService.GenerateImageFromContext(req.Message, context)
 		if err != nil {
 			fmt.Printf("WARNING: Image generation failed: %v, falling back to text\n", err)

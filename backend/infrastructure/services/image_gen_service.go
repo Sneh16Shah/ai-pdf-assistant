@@ -92,13 +92,10 @@ func (s *ImageGenService) GenerateImage(prompt string) (*ImageGenResult, error) 
 
 // GenerateImageFromContext generates a diagram based on document context
 func (s *ImageGenService) GenerateImageFromContext(userRequest string, documentContext string) (*ImageGenResult, error) {
-	prompt := fmt.Sprintf(`Based on the following document context, %s
-
-Document Context:
-%s
-
-Create a clear, professional diagram or illustration. Use clean lines, labels, and a logical layout.`,
-		userRequest, truncateForPrompt(documentContext, 4000))
+	// Extract a short summary for the image prompt (Pollinations uses GET URLs, so prompt must be short)
+	contextSnippet := truncateForPrompt(documentContext, 200)
+	prompt := fmt.Sprintf("Professional diagram: %s. Context: %s. Clean, labeled, modern style.",
+		truncateForPrompt(userRequest, 100), contextSnippet)
 
 	return s.GenerateImage(prompt)
 }
