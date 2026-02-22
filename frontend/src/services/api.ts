@@ -85,6 +85,22 @@ export const addPDFToSession = async (sessionId: string, file: File): Promise<Up
   return response.data;
 };
 
+// Re-hydrate an existing session's in-memory state (after backend restart)
+// without creating a new session in the database.
+export const rehydrateSession = async (sessionId: string, file: File): Promise<UploadResponse> => {
+  const formData = new FormData();
+  formData.append('pdf', file);
+  formData.append('session_id', sessionId);
+
+  const response = await api.post<UploadResponse>('/pdf/rehydrate', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data;
+};
+
 export const getSessionDocuments = async (sessionId: string): Promise<SessionDocument[]> => {
   const response = await api.get<SessionDocumentsResponse>(`/pdf/session/${sessionId}/documents`);
   return response.data.documents;
@@ -141,11 +157,17 @@ export const streamMessage = async (
   callbacks: StreamCallbacks
 ): Promise<void> => {
   try {
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/chat/stream`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         session_id: sessionId,
         message,

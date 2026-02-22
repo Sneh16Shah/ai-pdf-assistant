@@ -165,6 +165,7 @@ func main() {
 		pdf.Use(handlers.OptionalAuthMiddleware())
 		{
 			pdf.POST("/upload", pdfHandler.Upload)
+			pdf.POST("/rehydrate", pdfHandler.Rehydrate)
 			pdf.GET("/status/:id", pdfHandler.Status)
 			pdf.GET("/session/:sessionId/documents", pdfHandler.ListSessionDocuments)
 			pdf.POST("/session/:sessionId/add", pdfHandler.AddToSession)

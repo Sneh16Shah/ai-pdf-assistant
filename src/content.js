@@ -33,6 +33,9 @@
     // ─── State ──────────────────────────────────────────────────────
     let sessionId = null;
     let isUploading = false;
+    let uploadAttempts = 0;
+    let uploadFailed = false;
+    const MAX_UPLOAD_ATTEMPTS = 2;
 
     // ─── Create FAB (Ask AI button) ─────────────────────────────────
     const fab = document.createElement('div');
@@ -47,8 +50,8 @@
         // MUST call OPEN_SIDE_PANEL synchronously first — user gesture is lost after await
         chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' });
 
-        // Start upload if not already done
-        if (!sessionId && !isUploading) {
+        // Start upload if not already done and hasn't permanently failed
+        if (!sessionId && !isUploading && !uploadFailed) {
             uploadCurrentPDF();
         }
 
@@ -124,7 +127,9 @@
         }
 
         if (msg.type === 'REQUEST_UPLOAD') {
-            if (!sessionId && !isUploading) {
+            if (uploadFailed) {
+                sendResponse({ error: 'Upload failed after multiple attempts. Please reload the page to try again.' });
+            } else if (!sessionId && !isUploading) {
                 uploadCurrentPDF().then((result) => {
                     sendResponse(result);
                 }).catch((err) => {
@@ -147,7 +152,17 @@
     });
 
     // ─── Upload PDF ─────────────────────────────────────────────────
-    async function uploadCurrentPDF(selectedText) {
+    async function uploadCurrentPDF() {
+        if (uploadAttempts >= MAX_UPLOAD_ATTEMPTS) {
+            uploadFailed = true;
+            chrome.runtime.sendMessage({
+                type: 'UPLOAD_FAILED',
+                error: 'Upload failed after multiple attempts. Please reload the page.',
+            }).catch(() => { });
+            throw new Error('Max upload attempts reached');
+        }
+
+        uploadAttempts++;
         isUploading = true;
         try {
             let pdfUrl = location.href;
@@ -156,19 +171,10 @@
             const obj = document.querySelector('object[type="application/pdf"]');
             if (obj && obj.data) pdfUrl = obj.data;
 
-            const response = await fetch(pdfUrl);
-            const blob = await response.blob();
-
-            const dataUrl = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-
+            // Send URL to background — it fetches directly with host_permissions
             const result = await chrome.runtime.sendMessage({
                 type: 'UPLOAD_PDF',
-                pdfDataUrl: dataUrl,
+                pdfUrl: pdfUrl,
                 filename: filename,
             });
 
@@ -186,7 +192,14 @@
 
             return result;
         } catch (err) {
-            console.error('PDF upload failed:', err);
+            console.error(`PDF upload attempt ${uploadAttempts}/${MAX_UPLOAD_ATTEMPTS} failed:`, err);
+            if (uploadAttempts >= MAX_UPLOAD_ATTEMPTS) {
+                uploadFailed = true;
+                chrome.runtime.sendMessage({
+                    type: 'UPLOAD_FAILED',
+                    error: `Upload failed: ${err.message}`,
+                }).catch(() => { });
+            }
             throw err;
         } finally {
             isUploading = false;

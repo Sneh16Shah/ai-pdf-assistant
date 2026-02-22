@@ -142,3 +142,56 @@ func (uc *PDFUseCase) GetSessionDocuments(sessionID string) ([]*proto.Document, 
 func (uc *PDFUseCase) RemoveDocumentFromSession(sessionID string, documentID string) error {
 	return uc.sessionRepo.RemoveDocument(sessionID, documentID)
 }
+
+// RehydrateSession processes a PDF and loads it into an existing session ID.
+// This restores the in-memory session state after a backend restart without
+// creating a new session (which would cause duplicates in the DB).
+func (uc *PDFUseCase) RehydrateSession(sessionID string, filePath string, filename string) (*proto.UploadResponse, error) {
+	// Process PDF
+	doc, err := uc.pdfService.ProcessPDF(filePath, filename)
+	if err != nil {
+		return &proto.UploadResponse{
+			Status: proto.Status_STATUS_ERROR,
+			Error: &proto.Error{
+				Code:    "PDF_PROCESSING_ERROR",
+				Message: fmt.Sprintf("Failed to process PDF: %v", err),
+			},
+		}, nil
+	}
+
+	// Store document in memory
+	if err := uc.docRepo.Store(doc); err != nil {
+		return &proto.UploadResponse{
+			Status: proto.Status_STATUS_ERROR,
+			Error: &proto.Error{
+				Code:    "STORAGE_ERROR",
+				Message: fmt.Sprintf("Failed to store document: %v", err),
+			},
+		}, nil
+	}
+
+	// Check if session already exists in memory — if so, just add the document
+	_, getErr := uc.sessionRepo.Get(sessionID)
+	if getErr == nil {
+		// Session exists, add document to it
+		_ = uc.sessionRepo.AddDocument(sessionID, doc)
+	} else {
+		// Session doesn't exist in memory — create it with the given ID
+		_, err := uc.sessionRepo.CreateWithID(sessionID, doc.Id, doc)
+		if err != nil {
+			return &proto.UploadResponse{
+				Status: proto.Status_STATUS_ERROR,
+				Error: &proto.Error{
+					Code:    "SESSION_ERROR",
+					Message: fmt.Sprintf("Failed to re-hydrate session: %v", err),
+				},
+			}, nil
+		}
+	}
+
+	return &proto.UploadResponse{
+		Status:    proto.Status_STATUS_SUCCESS,
+		Document:  doc,
+		SessionId: sessionID,
+	}, nil
+}

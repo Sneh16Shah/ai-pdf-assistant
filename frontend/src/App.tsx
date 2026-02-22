@@ -6,7 +6,7 @@ import SummaryView from './components/SummaryView';
 import DocumentSidebar from './components/DocumentSidebar';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
-import { UploadResponse, SessionDocument, addPDFToSession, deleteDocument, getSessionDocuments, downloadDocumentPDF } from './services/api';
+import { UploadResponse, SessionDocument, addPDFToSession, deleteDocument, getSessionDocuments, downloadDocumentPDF, rehydrateSession } from './services/api';
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './contexts/AuthContext';
 
@@ -36,9 +36,77 @@ export default function App() {
 
   const handleGoToPage = (page: number) => {
     setTargetPage(page);
-    // Reset after a brief delay to allow re-clicking same page
     setTimeout(() => setTargetPage(undefined), 100);
   };
+
+  // ─── Reusable session-resume logic (used by Dashboard + deep link) ───
+  const resumeSession = useCallback(async (resumeSessionId: string) => {
+    setSessionId(resumeSessionId);
+    setIsPanelOpen(true);
+    setView('viewer');
+
+    // Update URL hash without re-triggering the deep link effect
+    if (window.location.hash !== `#session/${resumeSessionId}`) {
+      window.location.hash = `#session/${resumeSessionId}`;
+    }
+
+    try {
+      const docs = await getSessionDocuments(resumeSessionId);
+      if (docs && docs.length > 0) {
+        const sessionDocs: SessionDocument[] = [];
+        const urls: Record<string, string> = {};
+
+        for (const doc of docs) {
+          sessionDocs.push({ id: doc.id, filename: doc.filename, pages: doc.pages });
+          try {
+            const blobUrl = await downloadDocumentPDF(doc.id);
+            urls[doc.id] = blobUrl;
+
+            const blobRes = await fetch(blobUrl);
+            const blob = await blobRes.blob();
+            const file = new File([blob], doc.filename, { type: 'application/pdf' });
+            await rehydrateSession(resumeSessionId, file);
+          } catch (err) {
+            console.error(`Failed to process PDF for ${doc.filename}:`, err);
+          }
+        }
+
+        setSessionId(resumeSessionId);
+        setDocuments(sessionDocs);
+        setPdfUrls(urls);
+
+        const firstDoc = sessionDocs[0];
+        setActiveDocumentId(firstDoc.id);
+        if (urls[firstDoc.id]) {
+          setPdfUrl(urls[firstDoc.id]);
+        }
+        setDocumentInfo({
+          document_id: firstDoc.id,
+          session_id: resumeSessionId,
+          filename: firstDoc.filename,
+          pages: firstDoc.pages,
+          chunks: 0,
+          message: 'Resumed',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load session documents:', err);
+      setSessionId(resumeSessionId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+    const hash = window.location.hash; // e.g. #session/abc-123
+    const match = hash.match(/^#session\/(.+)$/);
+    if (match) {
+      const deepLinkSessionId = match[1];
+      // Only resume if it's different from current session to avoid loops
+      if (deepLinkSessionId !== sessionId) {
+        resumeSession(deepLinkSessionId);
+      }
+    }
+  }, [isAuthenticated, isLoading, resumeSession, sessionId]);
 
   const handleUploadSuccess = (data: UploadResponse, file: File) => {
     // Set session ID (only changes on first upload)
@@ -293,53 +361,7 @@ export default function App() {
       <main className="flex-1 flex overflow-hidden">
         {view === 'dashboard' && (
           <div className="flex-1 overflow-auto">
-            <Dashboard onResumeSession={async (resumeSessionId) => {
-              // Set the session ID so chat works
-              setSessionId(resumeSessionId);
-              // Open the AI panel for chatting
-              setIsPanelOpen(true);
-              // Switch to viewer
-              setView('viewer');
-
-              // Fetch session documents and download PDFs
-              try {
-                const docs = await getSessionDocuments(resumeSessionId);
-                if (docs && docs.length > 0) {
-                  const sessionDocs: SessionDocument[] = [];
-                  const urls: Record<string, string> = {};
-
-                  for (const doc of docs) {
-                    sessionDocs.push({ id: doc.id, filename: doc.filename, pages: doc.pages });
-                    try {
-                      const blobUrl = await downloadDocumentPDF(doc.id);
-                      urls[doc.id] = blobUrl;
-                    } catch (err) {
-                      console.error(`Failed to download PDF for ${doc.filename}:`, err);
-                    }
-                  }
-
-                  setDocuments(sessionDocs);
-                  setPdfUrls(urls);
-
-                  // Set the first document as active
-                  const firstDoc = sessionDocs[0];
-                  setActiveDocumentId(firstDoc.id);
-                  if (urls[firstDoc.id]) {
-                    setPdfUrl(urls[firstDoc.id]);
-                  }
-                  setDocumentInfo({
-                    document_id: firstDoc.id,
-                    session_id: resumeSessionId,
-                    filename: firstDoc.filename,
-                    pages: firstDoc.pages,
-                    chunks: 0,
-                    message: 'Resumed',
-                  });
-                }
-              } catch (err) {
-                console.error('Failed to load session documents:', err);
-              }
-            }} />
+            <Dashboard onResumeSession={resumeSession} />
           </div>
         )}
 
@@ -443,6 +465,7 @@ export default function App() {
                 isOpen={isPanelOpen}
                 onClose={() => setIsPanelOpen(false)}
                 onGoToPage={handleGoToPage}
+                onTextConsumed={() => setSelectedText(null)}
               />
             </div>
           </div>

@@ -87,11 +87,17 @@ func (r *PersistenceRepository) SaveMessage(msg *DBMessage) error {
 		return nil
 	}
 
+	// Ensure citations is valid JSON (nil → JSON null) to avoid PostgreSQL errors
+	citations := msg.Citations
+	if citations == nil {
+		citations = json.RawMessage("null")
+	}
+
 	_, err := database.DB.Exec(`
 		INSERT INTO chat_messages (id, session_id, role, content, citations, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (id) DO NOTHING
-	`, msg.ID, msg.SessionID, msg.Role, msg.Content, msg.Citations, msg.CreatedAt)
+	`, msg.ID, msg.SessionID, msg.Role, msg.Content, citations, msg.CreatedAt)
 
 	return err
 }

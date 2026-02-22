@@ -34,6 +34,8 @@
     const settingsPanel = document.getElementById('settings-panel');
     const apiUrlInput = document.getElementById('api-url');
     const saveUrlBtn = document.getElementById('save-url');
+    const openWebsiteBtn = document.getElementById('open-website');
+    const signOutBtn = document.getElementById('sign-out-btn');
 
     // ─── Init ───────────────────────────────────────────────────────
     chatForm.addEventListener('submit', handleSubmit);
@@ -42,6 +44,39 @@
         settingsPanel.classList.toggle('hidden');
     });
     saveUrlBtn.addEventListener('click', handleSaveUrl);
+    openWebsiteBtn.addEventListener('click', async () => {
+        // Derive website URL from API URL (default: http://127.0.0.1:3001)
+        try {
+            const result = await chrome.runtime.sendMessage({ type: 'GET_API_URL' });
+            const apiUrl = result.apiUrl || 'http://127.0.0.1:8081/api/v1';
+            const url = new URL(apiUrl);
+            let websiteUrl = `${url.protocol}//${url.hostname}:3001`;
+            // Append session hash for deep linking
+            if (sessionId) {
+                websiteUrl += `#session/${sessionId}`;
+            }
+            chrome.tabs.create({ url: websiteUrl });
+        } catch {
+            chrome.tabs.create({ url: 'http://127.0.0.1:3001' });
+        }
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+        try {
+            await chrome.runtime.sendMessage({ type: 'LOGOUT' });
+        } catch { /* ignore */ }
+        // Clear local state
+        sessionId = null;
+        messages.length = 0;
+        messagesEl.innerHTML = '';
+        chatInput.value = '';
+        chatInput.disabled = true;
+        sendBtn.disabled = true;
+        docInfo.classList.add('hidden');
+        statusMsg.classList.add('hidden');
+        // Return to auth screen
+        showAuthScreen();
+    });
 
     // Start the flow
     initAuth();
@@ -125,6 +160,15 @@
         chatForm.classList.remove('hidden');
     }
 
+    function showError(msg) {
+        statusText.textContent = msg;
+        statusMsg.classList.remove('hidden');
+        statusMsg.classList.add('error');
+        // Hide spinner on error
+        const spinner = statusMsg.querySelector('.status-spinner');
+        if (spinner) spinner.style.display = 'none';
+    }
+
     // ─── PDF Detection & Upload ─────────────────────────────────────
     async function checkForPDF() {
         statusText.textContent = 'Looking for PDF...';
@@ -155,9 +199,9 @@
                         docInfo.classList.remove('hidden');
                     }
                     loadHistory();
-                } else if (response && response.error && response.error !== 'Upload already in progress') {
-                    // Need to upload — content script will handle it
-                    statusText.textContent = 'Uploading PDF...';
+                } else if (response && response.error) {
+                    // Upload failed or other error
+                    showError(response.error);
                 }
             } catch {
                 // Content script not available — not a PDF page
@@ -195,6 +239,11 @@
                 docInfo.classList.remove('hidden');
             }
             loadHistory();
+            sendResponse({ received: true });
+        }
+
+        if (msg.type === 'UPLOAD_FAILED') {
+            showError(msg.error || 'PDF upload failed. Please reload the page and try again.');
             sendResponse({ received: true });
         }
     });
@@ -250,7 +299,14 @@
                 renderAIImage(result.image_base64, result.image_mime_type);
             }
         } catch (err) {
-            addMessage('assistant', `Error: ${err.message || 'Failed to get response'}`);
+            // Detect stale session (404 SESSION_NOT_FOUND)
+            const errMsg = err.message || '';
+            if (errMsg.includes('SESSION_NOT_FOUND') || errMsg.includes('404')) {
+                sessionId = null;
+                addMessage('assistant', 'Session expired. Please reload the page to re-upload the PDF and start a new session.');
+            } else {
+                addMessage('assistant', `Error: ${errMsg || 'Failed to get response'}`);
+            }
         } finally {
             setLoading(false);
         }

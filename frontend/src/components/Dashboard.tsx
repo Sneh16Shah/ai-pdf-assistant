@@ -9,6 +9,8 @@ export default function Dashboard({ onResumeSession }: DashboardProps) {
     const [sessions, setSessions] = useState<UserSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         loadSessions();
@@ -26,13 +28,17 @@ export default function Dashboard({ onResumeSession }: DashboardProps) {
         }
     };
 
-    const handleDelete = async (sessionId: string) => {
-        if (!confirm('Delete this session and all its data?')) return;
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await deleteUserSession(sessionId);
-            setSessions(prev => prev.filter(s => s.id !== sessionId));
+            await deleteUserSession(deleteTarget);
+            setSessions(prev => prev.filter(s => s.id !== deleteTarget));
         } catch {
             setError('Failed to delete session');
+        } finally {
+            setDeleting(false);
+            setDeleteTarget(null);
         }
     };
 
@@ -127,7 +133,7 @@ export default function Dashboard({ onResumeSession }: DashboardProps) {
                                         </button>
                                     )}
                                     <button
-                                        onClick={() => handleDelete(session.id)}
+                                        onClick={() => setDeleteTarget(session.id)}
                                         className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                                         title="Delete session"
                                     >
@@ -139,6 +145,49 @@ export default function Dashboard({ onResumeSession }: DashboardProps) {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !deleting && setDeleteTarget(null)} />
+                    <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-sm mx-4 animate-in">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Delete Session</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                            Are you sure you want to delete this session? All chat history and uploaded documents will be permanently removed.
+                        </p>
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                disabled={deleting}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center space-x-1"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span>Deleting...</span>
+                                    </>
+                                ) : (
+                                    <span>Delete</span>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

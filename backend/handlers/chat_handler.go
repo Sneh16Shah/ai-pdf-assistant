@@ -76,27 +76,31 @@ func (h *ChatHandler) Message(c *gin.Context) {
 	// Persist messages to database if user is authenticated
 	if _, exists := c.Get("userID"); exists {
 		// Save user message
-		h.persistenceRepo.SaveMessage(&repositories.DBMessage{
+		if err := h.persistenceRepo.SaveMessage(&repositories.DBMessage{
 			ID:        uuid.New().String(),
 			SessionID: jsonReq.SessionID,
 			Role:      "user",
 			Content:   jsonReq.Message,
 			CreatedAt: time.Now(),
-		})
+		}); err != nil {
+			fmt.Printf("ERROR: Failed to save user message: %v\n", err)
+		}
 
 		// Save AI response
 		var citationsJSON json.RawMessage
 		if resp.Citations != nil {
 			citationsJSON, _ = json.Marshal(resp.Citations)
 		}
-		h.persistenceRepo.SaveMessage(&repositories.DBMessage{
+		if err := h.persistenceRepo.SaveMessage(&repositories.DBMessage{
 			ID:        uuid.New().String(),
 			SessionID: jsonReq.SessionID,
 			Role:      "assistant",
 			Content:   resp.Response,
 			Citations: citationsJSON,
 			CreatedAt: time.Now(),
-		})
+		}); err != nil {
+			fmt.Printf("ERROR: Failed to save assistant message: %v\n", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -229,6 +233,34 @@ func (h *ChatHandler) Stream(c *gin.Context) {
 		c.SSEvent("token", gin.H{"content": word})
 		c.Writer.Flush()
 		time.Sleep(20 * time.Millisecond) // Small delay for streaming effect
+	}
+
+	// Persist messages to database if user is authenticated
+	if _, exists := c.Get("userID"); exists {
+		if err := h.persistenceRepo.SaveMessage(&repositories.DBMessage{
+			ID:        uuid.New().String(),
+			SessionID: jsonReq.SessionID,
+			Role:      "user",
+			Content:   jsonReq.Message,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			fmt.Printf("ERROR: Failed to save user message (stream): %v\n", err)
+		}
+
+		var citationsJSON json.RawMessage
+		if resp.Citations != nil {
+			citationsJSON, _ = json.Marshal(resp.Citations)
+		}
+		if err := h.persistenceRepo.SaveMessage(&repositories.DBMessage{
+			ID:        uuid.New().String(),
+			SessionID: jsonReq.SessionID,
+			Role:      "assistant",
+			Content:   resp.Response,
+			Citations: citationsJSON,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			fmt.Printf("ERROR: Failed to save assistant message (stream): %v\n", err)
+		}
 	}
 
 	// Send completion event with citations

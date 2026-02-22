@@ -42,6 +42,26 @@ func (r *SessionRepository) Create(documentID string, document *proto.Document) 
 	return session, nil
 }
 
+// CreateWithID creates (or overwrites) a session with a specific ID.
+// Used to re-hydrate an existing session after a backend restart.
+func (r *SessionRepository) CreateWithID(sessionID string, documentID string, document *proto.Document) (*proto.ChatSession, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	session := &proto.ChatSession{
+		Id:           sessionID,
+		DocumentId:   documentID,
+		Document:     document,
+		Documents:    []*proto.Document{document},
+		Messages:     []*proto.ChatMessage{},
+		CreatedAt:    time.Now().Unix(),
+		LastActivity: time.Now().Unix(),
+	}
+
+	r.sessions[sessionID] = session
+	return session, nil
+}
+
 // Get retrieves a session by ID
 func (r *SessionRepository) Get(id string) (*proto.ChatSession, error) {
 	r.mutex.RLock()

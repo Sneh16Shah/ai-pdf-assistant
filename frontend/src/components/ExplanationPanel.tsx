@@ -9,6 +9,7 @@ interface ExplanationPanelProps {
     isOpen: boolean;
     onClose: () => void;
     onGoToPage?: (page: number) => void;
+    onTextConsumed?: () => void;
 }
 
 export default function ExplanationPanel({
@@ -18,11 +19,11 @@ export default function ExplanationPanel({
     isOpen,
     onClose,
     onGoToPage,
+    onTextConsumed,
 }: ExplanationPanelProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [explanation, setExplanation] = useState<string | null>(null);
     const [citations, setCitations] = useState<Citation[]>([]);
     const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -87,6 +88,8 @@ export default function ExplanationPanel({
             const truncated = selectedText.length > 300 ? selectedText.substring(0, 300) + '...' : selectedText;
             const prompt = `"${truncated}"\n\nExplain this.`;
             sendChatMessage(prompt);
+            // Clear the selectedText in parent so re-mounting won't re-send
+            onTextConsumed?.();
         }
     }, [selectedText, isOpen, sessionId, pageNumber, loading]); // Added dependencies for sendChatMessage
 
@@ -96,7 +99,7 @@ export default function ExplanationPanel({
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, explanation]);
+    }, [messages]);
 
 
 
@@ -141,7 +144,7 @@ export default function ExplanationPanel({
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {/* Empty State */}
-                {!explanation && messages.length === 0 && !loading && (
+                {!messages.length && !loading && (
                     <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 dark:text-gray-500">
                         <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -155,13 +158,7 @@ export default function ExplanationPanel({
                     </div>
                 )}
 
-                {explanation && (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                            <ReactMarkdown>{explanation}</ReactMarkdown>
-                        </div>
-                    </div>
-                )}
+
 
                 {/* AI-Generated Image */}
                 {generatedImage && (
@@ -213,8 +210,7 @@ export default function ExplanationPanel({
                         ))}
                     </div>
                 )}
-                {/* Chat messages - skip first 2 only when explanation exists (text selection flow) */}
-                {(explanation ? messages.slice(2) : messages).map((message, index) => (
+                {messages.map((message, index) => (
                     <div
                         key={index}
                         className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}

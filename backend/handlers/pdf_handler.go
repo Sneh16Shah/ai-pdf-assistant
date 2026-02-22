@@ -125,6 +125,81 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 	})
 }
 
+// Rehydrate restores a session's in-memory state by re-processing a PDF
+// without creating a new session in the database. Used when resuming sessions
+// after a backend restart.
+func (h *PDFHandler) Rehydrate(c *gin.Context) {
+	sessionID := c.PostForm("session_id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "session_id is required",
+		})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("pdf")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "No file uploaded: " + err.Error(),
+		})
+		return
+	}
+	defer file.Close()
+
+	// Save uploaded file
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "./uploads"
+	}
+	os.MkdirAll(uploadDir, 0755)
+
+	filename := header.Filename
+	filePath := filepath.Join(uploadDir, filename)
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to save file: " + err.Error(),
+		})
+		return
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to copy file: " + err.Error(),
+		})
+		return
+	}
+
+	// Re-hydrate the session (process PDF + load into existing session ID)
+	resp, err := h.pdfUseCase.RehydrateSession(sessionID, filePath, filename)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to rehydrate session: " + err.Error(),
+		})
+		return
+	}
+
+	if resp.Status != proto.Status_STATUS_SUCCESS {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": resp.Error.Message,
+			"code":  resp.Error.Code,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"document_id": resp.Document.Id,
+		"session_id":  resp.SessionId,
+		"filename":    resp.Document.Filename,
+		"pages":       resp.Document.Pages,
+		"chunks":      len(resp.Document.Chunks),
+		"message":     "Session rehydrated successfully",
+	})
+}
+
 // Status handles document status requests
 func (h *PDFHandler) Status(c *gin.Context) {
 	documentID := c.Param("id")
@@ -166,26 +241,7 @@ func (h *PDFHandler) Status(c *gin.Context) {
 func (h *PDFHandler) ListSessionDocuments(c *gin.Context) {
 	sessionID := c.Param("sessionId")
 
-	// Try in-memory session first
-	docs, err := h.pdfUseCase.GetSessionDocuments(sessionID)
-	if err == nil && len(docs) > 0 {
-		// Convert documents to a simpler format
-		documents := make([]gin.H, len(docs))
-		for i, doc := range docs {
-			documents[i] = gin.H{
-				"id":       doc.Id,
-				"filename": doc.Filename,
-				"pages":    doc.Pages,
-			}
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"documents": documents,
-			"count":     len(documents),
-		})
-		return
-	}
-
-	// Fall back to database for persisted sessions (e.g., resumed sessions)
+	// Check database first (authoritative source — IDs match DownloadDocument)
 	if h.persistenceRepo != nil {
 		dbDocs, dbErr := h.persistenceRepo.GetSessionDocuments(sessionID)
 		if dbErr == nil && len(dbDocs) > 0 {
@@ -203,6 +259,24 @@ func (h *PDFHandler) ListSessionDocuments(c *gin.Context) {
 			})
 			return
 		}
+	}
+
+	// Fall back to in-memory session (for sessions not yet persisted to DB)
+	docs, err := h.pdfUseCase.GetSessionDocuments(sessionID)
+	if err == nil && len(docs) > 0 {
+		documents := make([]gin.H, len(docs))
+		for i, doc := range docs {
+			documents[i] = gin.H{
+				"id":       doc.Id,
+				"filename": doc.Filename,
+				"pages":    doc.Pages,
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"documents": documents,
+			"count":     len(documents),
+		})
+		return
 	}
 
 	c.JSON(http.StatusNotFound, gin.H{

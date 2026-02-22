@@ -182,9 +182,33 @@ async function handleMessage(msg, sender) {
 
         // ── PDF Upload ──
         case 'UPLOAD_PDF': {
-            const { pdfDataUrl, filename } = msg;
-            const res = await fetch(pdfDataUrl);
-            const blob = await res.blob();
+            const { pdfUrl, pdfDataUrl, filename } = msg;
+            let blob;
+
+            if (pdfUrl) {
+                // Preferred: background fetches PDF directly (has host_permissions)
+                // This avoids content script fetch returning HTML for some URLs
+                const res = await fetch(pdfUrl);
+                const contentType = res.headers.get('content-type') || '';
+
+                // Validate we got a PDF, not an HTML error page
+                if (contentType.includes('text/html')) {
+                    throw new Error('Server returned HTML instead of PDF. The URL may require authentication or is not a direct PDF link.');
+                }
+
+                blob = await res.blob();
+
+                // Sanity check: PDF should be at least a few KB
+                if (blob.size < 100) {
+                    throw new Error(`PDF file too small (${blob.size} bytes) — likely not a valid PDF`);
+                }
+            } else if (pdfDataUrl) {
+                // Legacy fallback: data URL from content script
+                const res = await fetch(pdfDataUrl);
+                blob = await res.blob();
+            } else {
+                throw new Error('No PDF URL or data provided');
+            }
 
             const formData = new FormData();
             formData.append('pdf', blob, filename || 'document.pdf');
@@ -264,6 +288,9 @@ async function handleMessage(msg, sender) {
         }
 
         case 'SELECTED_TEXT_FROM_BG':
+            return { received: true };
+
+        case 'UPLOAD_FAILED':
             return { received: true };
 
         default:

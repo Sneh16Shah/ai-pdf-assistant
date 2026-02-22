@@ -5,6 +5,7 @@ import (
 	"ai-pdf-assistant-backend/infrastructure/services"
 	"ai-pdf-assistant-backend/proto"
 	"fmt"
+	"strings"
 )
 
 // ChatUseCase handles chat-related business logic
@@ -163,8 +164,13 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		relevantChunkTexts[i] = chunkText
 	}
 
-	// Get citations for the relevant chunks
-	citations := uc.vectorSearch.GetCitations(relevantChunks)
+	// Get citations for the relevant chunks (skip for general/overview questions)
+	var citations []services.Citation
+	if isGeneralQuestion(req.Message) {
+		citations = []services.Citation{}
+	} else {
+		citations = uc.vectorSearch.GetCitations(relevantChunks)
+	}
 
 	return &proto.ChatResponse{
 		Status:         proto.Status_STATUS_SUCCESS,
@@ -214,4 +220,41 @@ func (uc *ChatUseCase) ClearSession(sessionID string) (*proto.ClearSessionRespon
 		Status:  proto.Status_STATUS_SUCCESS,
 		Message: "Session cleared successfully",
 	}, nil
+}
+
+// isGeneralQuestion checks if a question is a broad overview/summary question
+// that shouldn't have specific page citations.
+func isGeneralQuestion(msg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+
+	generalPatterns := []string{
+		"what is this pdf about",
+		"what is this document about",
+		"what is this book about",
+		"what is this paper about",
+		"what is this file about",
+		"what is this about",
+		"summarize",
+		"summary",
+		"overview",
+		"what does this cover",
+		"what does this document cover",
+		"what does this pdf cover",
+		"what topics",
+		"table of contents",
+		"main topics",
+		"key topics",
+		"give me an overview",
+		"tell me about this",
+		"describe this document",
+		"describe this pdf",
+		"what can you tell me about this",
+	}
+
+	for _, pattern := range generalPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
 }
