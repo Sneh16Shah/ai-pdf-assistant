@@ -39,6 +39,23 @@ export default function App() {
     setTimeout(() => setTargetPage(undefined), 100);
   };
 
+  // ─── Clear session state + URL hash ───
+  const clearSession = useCallback(() => {
+    setSessionId(null);
+    setDocuments([]);
+    setActiveDocumentId(null);
+    setDocumentInfo(null);
+    setPdfUrl(null);
+    setPdfUrls({});
+    setIsPanelOpen(false);
+    setSelectedText(null);
+    setSelectedPage(null);
+    // Clear URL hash
+    if (window.location.hash) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
+
   // ─── Reusable session-resume logic (used by Dashboard + deep link) ───
   const resumeSession = useCallback(async (resumeSessionId: string) => {
     setSessionId(resumeSessionId);
@@ -279,7 +296,7 @@ export default function App() {
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">AskMyPDF</h1>
             <nav className="flex items-center space-x-2">
               <button
-                onClick={() => setView('dashboard')}
+                onClick={() => { clearSession(); setView('dashboard'); }}
                 className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'dashboard'
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -288,7 +305,7 @@ export default function App() {
                 Dashboard
               </button>
               <button
-                onClick={() => setView('upload')}
+                onClick={() => { clearSession(); setView('upload'); }}
                 className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'upload'
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -357,7 +374,7 @@ export default function App() {
                   {user?.name || user?.email}
                 </span>
                 <button
-                  onClick={logout}
+                  onClick={() => { clearSession(); logout(); }}
                   className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   title="Logout"
                 >
