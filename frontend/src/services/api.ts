@@ -257,3 +257,48 @@ export const getSessionMessages = async (sessionId: string) => {
 };
 
 export default api;
+
+// ============ Smart Mode API (token-optimized) ============
+
+export interface SmartTokenStats {
+  raw_tokens: number;
+  after_preprocessing: number;
+  after_retrieval: number;
+  final_tokens: number;
+  savings_percent: number;
+  boilerplate_removed: number;
+  chunks_original: number;
+  chunks_after_dedup: number;
+  chunks_used: number;
+  textrank_summary_len: number;
+}
+
+export interface SmartChatResponse extends ChatResponse {
+  token_stats?: SmartTokenStats;
+}
+
+export interface SmartSessionStats {
+  total_queries: number;
+  total_raw_tokens: number;
+  total_final_tokens: number;
+  total_saved_tokens: number;
+  avg_savings_percent: number;
+}
+
+export const sendSmartMessage = async (
+  sessionId: string,
+  message: string,
+  pageNumber?: number
+): Promise<SmartChatResponse> => {
+  const response = await api.post<SmartChatResponse>('/smart/message', {
+    session_id: sessionId,
+    message,
+    ...(pageNumber && { page_number: pageNumber }),
+  });
+  return response.data;
+};
+
+export const getSmartStats = async (sessionId: string): Promise<SmartSessionStats> => {
+  const response = await api.get(`/smart/stats/${sessionId}`);
+  return response.data.stats;
+};

@@ -90,10 +90,19 @@ func main() {
 	persistenceRepo := repositories.NewPersistenceRepository()
 	userHandler := handlers.NewUserHandler(persistenceRepo)
 
+	// Initialize smart scaling services (BM25 + TextRank + Preprocessing)
+	bm25Search := services.NewBM25Search()
+	textRank := services.NewTextRank()
+	preprocessor := services.NewPreprocessor()
+	smartContextBuilder := usecases.NewSmartContextBuilder(bm25Search, textRank, preprocessor)
+	smartChatUseCase := usecases.NewSmartChatUseCase(sessionRepo, aiService, smartContextBuilder, bm25Search, vectorSearch, visionService, imageGenService)
+	log.Println("Smart scaling services enabled (BM25 + TextRank + Preprocessing)")
+
 	// Initialize handlers
 	pdfHandler := handlers.NewPDFHandler(pdfUseCase, persistenceRepo)
 	chatHandler := handlers.NewChatHandler(chatUseCase, persistenceRepo)
 	summaryHandler := handlers.NewSummaryHandler(summaryUseCase)
+	smartChatHandler := handlers.NewSmartChatHandler(smartChatUseCase, persistenceRepo)
 
 	// Start session cleanup goroutine
 	go startSessionCleanup(sessionRepo)
@@ -193,6 +202,14 @@ func main() {
 
 		// Summary routes
 		api.POST("/pdf/summary", summaryHandler.Generate)
+
+		// Smart chat routes (optimized context with BM25 + TextRank + preprocessing)
+		smart := api.Group("/smart")
+		smart.Use(handlers.OptionalAuthMiddleware())
+		{
+			smart.POST("/message", smartChatHandler.Message)
+			smart.GET("/stats/:sessionId", smartChatHandler.Stats)
+		}
 	}
 
 	// Get port from environment or default to 8080

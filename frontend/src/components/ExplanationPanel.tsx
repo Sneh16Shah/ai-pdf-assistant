@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { sendMessage, ChatMessage, Citation, getSessionMessages } from '../services/api';
+import { sendMessage, sendSmartMessage, ChatMessage, Citation, SmartTokenStats, getSessionMessages } from '../services/api';
+import SmartModeToggle from './SmartModeToggle';
 
 interface ExplanationPanelProps {
     sessionId: string;
@@ -26,6 +27,8 @@ export default function ExplanationPanel({
     const [loading, setLoading] = useState(false);
     const [citations, setCitations] = useState<Citation[]>([]);
     const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
+    const [smartMode, setSmartMode] = useState(false);
+    const [lastTokenStats, setLastTokenStats] = useState<SmartTokenStats | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const previousTextRef = useRef<string>('');
     const loadedSessionRef = useRef<string>('');
@@ -60,13 +63,22 @@ export default function ExplanationPanel({
         setLoading(true);
 
         try {
-            const response = await sendMessage(sessionId, message, pageNumber || undefined);
-            setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
-            if (response.citations) {
-                setCitations(response.citations);
+            let responseData;
+            if (smartMode) {
+                const smartResp = await sendSmartMessage(sessionId, message, pageNumber || undefined);
+                responseData = smartResp;
+                if (smartResp.token_stats) {
+                    setLastTokenStats(smartResp.token_stats);
+                }
+            } else {
+                responseData = await sendMessage(sessionId, message, pageNumber || undefined);
             }
-            if (response.image_base64 && response.image_mime_type) {
-                setGeneratedImage({ base64: response.image_base64, mimeType: response.image_mime_type });
+            setMessages((prev) => [...prev, { role: 'assistant', content: responseData.response }]);
+            if (responseData.citations) {
+                setCitations(responseData.citations);
+            }
+            if (responseData.image_base64 && responseData.image_mime_type) {
+                setGeneratedImage({ base64: responseData.image_base64, mimeType: responseData.image_mime_type });
             } else {
                 setGeneratedImage(null);
             }
@@ -140,6 +152,13 @@ export default function ExplanationPanel({
                 </div>
             </div>
 
+            {/* Smart Mode Toggle */}
+            <SmartModeToggle
+                sessionId={sessionId}
+                isSmartMode={smartMode}
+                onToggle={setSmartMode}
+                lastTokenStats={lastTokenStats}
+            />
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -191,25 +210,6 @@ export default function ExplanationPanel({
                     </div>
                 )}
 
-                {/* Citations */}
-                {citations.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 px-1">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Sources:</span>
-                        {citations.map((citation, index) => (
-                            <button
-                                key={index}
-                                onClick={() => handleCitationClick(citation.page)}
-                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
-                                title={citation.text}
-                            >
-                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                Page {citation.page}
-                            </button>
-                        ))}
-                    </div>
-                )}
                 {messages.map((message, index) => (
                     <div
                         key={index}
@@ -231,6 +231,26 @@ export default function ExplanationPanel({
                         </div>
                     </div>
                 ))}
+
+                {/* Citations — shown after AI response */}
+                {citations.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 px-1">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Sources:</span>
+                        {citations.map((citation, index) => (
+                            <button
+                                key={index}
+                                onClick={() => handleCitationClick(citation.page)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
+                                title={citation.text}
+                            >
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Page {citation.page}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {loading && (
                     <div className="flex justify-start">
