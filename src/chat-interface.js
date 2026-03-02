@@ -30,20 +30,14 @@
     const authPassword = document.getElementById('auth-password');
     const authError = document.getElementById('auth-error');
     const authSubmit = document.getElementById('auth-submit');
-    const settingsToggle = document.getElementById('settings-toggle');
-    const settingsPanel = document.getElementById('settings-panel');
-    const apiUrlInput = document.getElementById('api-url');
-    const saveUrlBtn = document.getElementById('save-url');
+
     const openWebsiteBtn = document.getElementById('open-website');
     const signOutBtn = document.getElementById('sign-out-btn');
 
     // ─── Init ───────────────────────────────────────────────────────
     chatForm.addEventListener('submit', handleSubmit);
     loginForm.addEventListener('submit', handleLogin);
-    settingsToggle.addEventListener('click', () => {
-        settingsPanel.classList.toggle('hidden');
-    });
-    saveUrlBtn.addEventListener('click', handleSaveUrl);
+
     openWebsiteBtn.addEventListener('click', async () => {
         const isDevMode = !('update_url' in chrome.runtime.getManifest());
         const defaultFrontendUrl = isDevMode ? 'http://localhost:3001' : 'https://ai-pdf-assistant-z6lh.onrender.com';
@@ -95,9 +89,6 @@
     // ─── Auth ───────────────────────────────────────────────────────
     async function initAuth() {
         try {
-            // Load saved API URL
-            const urlResult = await chrome.runtime.sendMessage({ type: 'GET_API_URL' });
-            if (urlResult.apiUrl) apiUrlInput.value = urlResult.apiUrl;
 
             // Check auth
             const auth = await chrome.runtime.sendMessage({ type: 'GET_AUTH' });
@@ -141,13 +132,7 @@
         }
     }
 
-    async function handleSaveUrl() {
-        const url = apiUrlInput.value.trim();
-        if (!url) return;
-        await chrome.runtime.sendMessage({ type: 'SET_API_URL', apiUrl: url });
-        saveUrlBtn.textContent = '✓ Saved';
-        setTimeout(() => { saveUrlBtn.textContent = 'Save'; }, 1500);
-    }
+
 
     // ─── Screen management ──────────────────────────────────────────
     function showAuthScreen() {

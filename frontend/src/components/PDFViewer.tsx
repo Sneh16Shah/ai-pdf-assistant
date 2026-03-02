@@ -123,26 +123,26 @@ export default function PDFViewer({ pdfUrl, onTextSelect, targetPage }: PDFViewe
   return (
     <div ref={containerRef} className="relative flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700 shadow-sm">
+      <div className="flex items-center justify-between px-2 md:px-4 py-1.5 md:py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700 shadow-sm">
         <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-600 dark:text-gray-400">
+          <span className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
             Page {currentPage} of {numPages}
           </span>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 md:space-x-2">
           <button
-            onClick={() => setScale((s) => Math.max(s - 0.1, 0.5))}
-            className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            onClick={() => setScale((s) => Math.max(s - 0.1, 0.3))}
+            className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs md:text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             −
           </button>
-          <span className="text-sm text-gray-600 dark:text-gray-400 w-16 text-center">
+          <span className="text-xs md:text-sm text-gray-600 dark:text-gray-400 w-10 md:w-16 text-center">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={() => setScale((s) => Math.min(s + 0.1, 2.0))}
-            className="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="px-1.5 md:px-2 py-0.5 md:py-1 text-xs md:text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             +
           </button>

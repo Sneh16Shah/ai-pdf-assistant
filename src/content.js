@@ -50,10 +50,9 @@
         // MUST call OPEN_SIDE_PANEL synchronously first — user gesture is lost after await
         chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' });
 
-        // Start upload if not already done and hasn't permanently failed
-        if (!sessionId && !isUploading && !uploadFailed) {
-            uploadCurrentPDF();
-        }
+        // NOTE: Do NOT upload here — the side panel's checkForPDF() will trigger
+        // REQUEST_UPLOAD after the user is authenticated. This ensures the auth
+        // token is always sent, so the backend persists the session to the DB.
 
         // Try to get selected text and send it (async, after panel opens)
         getSelectedTextFromPDF().then((selectedText) => {

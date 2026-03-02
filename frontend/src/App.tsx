@@ -19,6 +19,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [documentInfo, setDocumentInfo] = useState<UploadResponse | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   // Multi-document state
   const [documents, setDocuments] = useState<SessionDocument[]>([]);
@@ -33,6 +34,10 @@ export default function App() {
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const [targetPage, setTargetPage] = useState<number | undefined>(undefined);
+
+  // Mobile state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileDocSidebarOpen, setIsMobileDocSidebarOpen] = useState(false);
 
   const handleGoToPage = (page: number) => {
     setTargetPage(page);
@@ -50,6 +55,7 @@ export default function App() {
     setIsPanelOpen(false);
     setSelectedText(null);
     setSelectedPage(null);
+    setSessionError(null);
     // Clear URL hash
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -59,6 +65,7 @@ export default function App() {
   // ─── Reusable session-resume logic (used by Dashboard + deep link) ───
   const resumeSession = useCallback(async (resumeSessionId: string) => {
     setSessionId(resumeSessionId);
+    setSessionError(null);
     setIsPanelOpen(true);
     setView('viewer');
 
@@ -69,46 +76,56 @@ export default function App() {
 
     try {
       const docs = await getSessionDocuments(resumeSessionId);
-      if (docs && docs.length > 0) {
-        const sessionDocs: SessionDocument[] = [];
-        const urls: Record<string, string> = {};
-
-        for (const doc of docs) {
-          sessionDocs.push({ id: doc.id, filename: doc.filename, pages: doc.pages });
-          try {
-            const blobUrl = await downloadDocumentPDF(doc.id);
-            urls[doc.id] = blobUrl;
-
-            const blobRes = await fetch(blobUrl);
-            const blob = await blobRes.blob();
-            const file = new File([blob], doc.filename, { type: 'application/pdf' });
-            await rehydrateSession(resumeSessionId, file);
-          } catch (err) {
-            console.error(`Failed to process PDF for ${doc.filename}:`, err);
-          }
-        }
-
-        setSessionId(resumeSessionId);
-        setDocuments(sessionDocs);
-        setPdfUrls(urls);
-
-        const firstDoc = sessionDocs[0];
-        setActiveDocumentId(firstDoc.id);
-        if (urls[firstDoc.id]) {
-          setPdfUrl(urls[firstDoc.id]);
-        }
-        setDocumentInfo({
-          document_id: firstDoc.id,
-          session_id: resumeSessionId,
-          filename: firstDoc.filename,
-          pages: firstDoc.pages,
-          chunks: 0,
-          message: 'Resumed',
-        });
+      if (!docs || docs.length === 0) {
+        setSessionError('No documents found for this session. The session may have expired or been deleted.');
+        return;
       }
+
+      const sessionDocs: SessionDocument[] = [];
+      const urls: Record<string, string> = {};
+
+      for (const doc of docs) {
+        sessionDocs.push({ id: doc.id, filename: doc.filename, pages: doc.pages });
+        try {
+          const blobUrl = await downloadDocumentPDF(doc.id);
+          urls[doc.id] = blobUrl;
+
+          const blobRes = await fetch(blobUrl);
+          const blob = await blobRes.blob();
+          const file = new File([blob], doc.filename, { type: 'application/pdf' });
+          await rehydrateSession(resumeSessionId, file);
+        } catch (err) {
+          console.error(`Failed to process PDF for ${doc.filename}:`, err);
+        }
+      }
+
+      // Check if any PDFs were successfully downloaded
+      if (Object.keys(urls).length === 0) {
+        setSessionError('Unable to download the PDF files for this session. Please upload the files again.');
+        setDocuments(sessionDocs);
+        return;
+      }
+
+      setSessionId(resumeSessionId);
+      setDocuments(sessionDocs);
+      setPdfUrls(urls);
+
+      const firstDoc = sessionDocs[0];
+      setActiveDocumentId(firstDoc.id);
+      if (urls[firstDoc.id]) {
+        setPdfUrl(urls[firstDoc.id]);
+      }
+      setDocumentInfo({
+        document_id: firstDoc.id,
+        session_id: resumeSessionId,
+        filename: firstDoc.filename,
+        pages: firstDoc.pages,
+        chunks: 0,
+        message: 'Resumed',
+      });
     } catch (err) {
       console.error('Failed to load session documents:', err);
-      setSessionId(resumeSessionId);
+      setSessionError('Something went wrong while loading this session. Please upload your file again to start a new session.');
     }
   }, []);
 
@@ -291,10 +308,24 @@ export default function App() {
     <div className="h-screen overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex flex-col transition-colors">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm flex-shrink-0 border-b dark:border-gray-700">
-        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-2 md:py-3">
           <div className="flex justify-between items-center">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">AskMyPDF</h1>
-            <nav className="flex items-center space-x-2">
+            {/* Mobile: hamburger + logo + AI button */}
+            <div className="flex items-center gap-2">
+              {/* Hamburger — mobile only */}
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden p-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 dark:text-white">AskMyPDF</h1>
+            </div>
+
+            {/* Desktop nav — hidden on mobile */}
+            <nav className="hidden md:flex items-center space-x-2">
               <button
                 onClick={() => { clearSession(); setView('dashboard'); }}
                 className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'dashboard'
@@ -384,8 +415,89 @@ export default function App() {
                 </button>
               </div>
             </nav>
+
+            {/* Mobile right icons — visible only on mobile */}
+            <div className="flex md:hidden items-center gap-1">
+              {sessionId && (
+                <button
+                  onClick={togglePanel}
+                  className={`p-1.5 rounded-lg transition-colors ${isPanelOpen
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                {theme === 'light' ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                )}
+              </button>
+              <button
+                onClick={() => { clearSession(); logout(); }}
+                className="p-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 space-y-1">
+            <button
+              onClick={() => { clearSession(); setView('dashboard'); setIsMobileMenuOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => { clearSession(); setView('upload'); setIsMobileMenuOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'upload' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              Upload
+            </button>
+            {sessionId && (
+              <>
+                <button
+                  onClick={() => { setView('viewer'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'viewer' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                >
+                  Viewer
+                </button>
+                <button
+                  onClick={() => { setView('summary'); setIsMobileMenuOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'summary' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                >
+                  Summary
+                </button>
+                {documents.length > 0 && (
+                  <button
+                    onClick={() => { setIsMobileDocSidebarOpen(true); setIsMobileMenuOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    📄 Documents ({documents.length})
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
@@ -415,8 +527,41 @@ export default function App() {
           </div>
         )}
 
+        {view === 'viewer' && sessionId && !pdfUrl && sessionError && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center max-w-md">
+              {/* Warning Icon */}
+              <div className="mx-auto w-16 h-16 md:w-20 md:h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 md:w-10 md:h-10 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h3 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                Unable to Load Session
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                {sessionError}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => { clearSession(); setView('upload'); }}
+                  className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors shadow-sm"
+                >
+                  Upload a New PDF
+                </button>
+                <button
+                  onClick={() => { clearSession(); setView('dashboard'); }}
+                  className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium transition-colors"
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {view === 'viewer' && sessionId && pdfUrl && (
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
             {/* Hidden file input for adding PDFs */}
             <input
               type="file"
@@ -427,47 +572,91 @@ export default function App() {
               className="hidden"
             />
 
-            {/* Document Sidebar */}
-            {documents.length > 0 && (
-              <DocumentSidebar
-                documents={documents}
-                activeDocumentId={activeDocumentId}
-                onDocumentSelect={handleDocumentSelect}
-                onDeleteDocument={handleDeleteDocument}
-                onAddMore={handleAddMorePdfs}
-                isDeleting={isDeleting}
-              />
+            {/* Mobile Document Sidebar Overlay */}
+            {isMobileDocSidebarOpen && (
+              <div className="md:hidden fixed inset-0 z-50 flex">
+                <div className="absolute inset-0 bg-black/50" onClick={() => setIsMobileDocSidebarOpen(false)} />
+                <div className="relative w-64 bg-white dark:bg-gray-800 shadow-xl z-10">
+                  <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Documents</h3>
+                    <button
+                      onClick={() => setIsMobileDocSidebarOpen(false)}
+                      className="p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <DocumentSidebar
+                    documents={documents}
+                    activeDocumentId={activeDocumentId}
+                    onDocumentSelect={(id) => { handleDocumentSelect(id); setIsMobileDocSidebarOpen(false); }}
+                    onDeleteDocument={handleDeleteDocument}
+                    onAddMore={handleAddMorePdfs}
+                    isDeleting={isDeleting}
+                  />
+                </div>
+              </div>
             )}
 
-            {/* PDF Viewer */}
-            <div className={`h-full overflow-hidden flex-1 transition-all duration-300 ${isPanelOpen ? 'w-3/5' : 'w-full'}`}>
+            {/* Desktop Document Sidebar — hidden on mobile */}
+            {documents.length > 0 && (
+              <div className="hidden md:block">
+                <DocumentSidebar
+                  documents={documents}
+                  activeDocumentId={activeDocumentId}
+                  onDocumentSelect={handleDocumentSelect}
+                  onDeleteDocument={handleDeleteDocument}
+                  onAddMore={handleAddMorePdfs}
+                  isDeleting={isDeleting}
+                />
+              </div>
+            )}
+
+            {/* PDF Viewer — mobile: top half when panel open, full when closed. Desktop: unchanged */}
+            <div className={`overflow-hidden flex-1 transition-all duration-300 ${isPanelOpen
+              ? 'h-[50%] md:h-full md:w-3/5'
+              : 'h-full md:w-full'
+              }`}>
               <div className="h-full flex flex-col">
-                <div className="px-4 py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="px-3 md:px-4 py-1.5 md:py-2 bg-white dark:bg-gray-800 border-b dark:border-gray-700 flex items-center justify-between">
+                  <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 truncate">
                     {documentInfo ? (
                       <>{documentInfo.filename} • {documentInfo.pages} pages
-                        <span className="text-gray-400 dark:text-gray-500 ml-2">• Select text to ask AI</span>
+                        <span className="text-gray-400 dark:text-gray-500 ml-2 hidden sm:inline">• Select text to ask AI</span>
                       </>
                     ) : sessionId ? (
-                      <>Resumed session • Use the AI panel to continue chatting</>
+                      <>Resumed session</>
                     ) : (
                       <>No document loaded</>
                     )}
                   </p>
-                  {isAddingPdf && (
-                    <span className="text-xs text-blue-500 animate-pulse">Adding PDF...</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Mobile doc button */}
+                    {documents.length > 0 && (
+                      <button
+                        onClick={() => setIsMobileDocSidebarOpen(true)}
+                        className="md:hidden p-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                      >
+                        📄 {documents.length}
+                      </button>
+                    )}
+                    {isAddingPdf && (
+                      <span className="text-xs text-blue-500 animate-pulse">Adding PDF...</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 overflow-hidden">
                   {pdfUrl ? (
                     <PDFViewer pdfUrl={pdfUrl} onTextSelect={handleTextSelect} targetPage={targetPage} />
                   ) : (
                     <div className="h-full flex items-center justify-center">
-                      <div className="text-center max-w-md">
-                        <svg className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="text-center max-w-md px-4">
+                        <svg className="w-12 h-12 md:w-16 md:h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                         </svg>
-                        <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
+                        <h3 className="text-base md:text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
                           Chat Session Resumed
                         </h3>
                         <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
@@ -487,8 +676,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Explanation Panel */}
-            <div className={`h-full overflow-hidden transition-all duration-300 ${isPanelOpen ? 'w-2/5' : 'w-0'}`}>
+            {/* Explanation Panel — mobile: bottom half. Desktop: right panel */}
+            <div className={`overflow-hidden transition-all duration-300 ${isPanelOpen
+              ? 'h-[50%] md:h-full md:w-2/5 border-t md:border-t-0 dark:border-gray-700'
+              : 'h-0 md:h-full md:w-0'
+              }`}>
               <ExplanationPanel
                 sessionId={sessionId}
                 selectedText={selectedText}
