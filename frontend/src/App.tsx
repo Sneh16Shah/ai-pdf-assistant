@@ -295,7 +295,7 @@ export default function App() {
   // Show loading spinner while checking auth
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-gray-950 dark:via-indigo-950 dark:to-slate-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -308,9 +308,16 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex flex-col transition-colors">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-gray-950 dark:via-indigo-950 dark:to-slate-900 flex flex-col transition-colors relative">
+      {/* Background orbs */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden z-0">
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-400/20 dark:bg-blue-600/15 rounded-full blur-3xl" />
+        <div className="absolute top-1/3 -right-40 w-80 h-80 bg-violet-400/20 dark:bg-violet-600/15 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 w-72 h-72 bg-indigo-400/20 dark:bg-indigo-600/10 rounded-full blur-3xl" />
+      </div>
+
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm flex-shrink-0 border-b dark:border-gray-700">
+      <header className="relative z-10 backdrop-blur-md bg-white/70 dark:bg-gray-900/70 border-b border-white/50 dark:border-white/10 flex-shrink-0 shadow-sm shadow-black/5">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-2 md:py-3">
           <div className="flex justify-between items-center">
             {/* Mobile: hamburger + logo + AI button */}
@@ -331,18 +338,18 @@ export default function App() {
             <nav className="hidden md:flex items-center space-x-2">
               <button
                 onClick={() => { clearSession(); setView('dashboard'); }}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'dashboard'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${view === 'dashboard'
+                  ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-md shadow-blue-500/25'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm'
                   }`}
               >
                 Dashboard
               </button>
               <button
                 onClick={() => { clearSession(); setView('upload'); }}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'upload'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${view === 'upload'
+                  ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-md shadow-blue-500/25'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm'
                   }`}
               >
                 Upload
@@ -351,28 +358,28 @@ export default function App() {
                 <>
                   <button
                     onClick={() => setView('viewer')}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'viewer'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${view === 'viewer'
+                      ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-md shadow-blue-500/25'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm'
                       }`}
                   >
                     Viewer
                   </button>
                   <button
                     onClick={() => setView('summary')}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${view === 'summary'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${view === 'summary'
+                      ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-md shadow-blue-500/25'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm'
                       }`}
                   >
                     Summary
                   </button>
-                  <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2"></div>
+                  <div className="w-px h-5 bg-white/40 dark:bg-white/10 mx-1"></div>
                   <button
                     onClick={togglePanel}
-                    className={`flex items-center space-x-1 px-3 py-1.5 text-sm rounded-lg transition-colors ${isPanelOpen
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    className={`flex items-center space-x-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200 ${isPanelOpen
+                      ? 'bg-blue-100/80 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 backdrop-blur-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm'
                       }`}
                     title="Toggle AI Panel (Ctrl+L)"
                   >
@@ -380,15 +387,15 @@ export default function App() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                     </svg>
                     <span>AI</span>
-                    <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 rounded">⌃L</kbd>
+                    <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-xs bg-white/60 dark:bg-white/10 rounded backdrop-blur-sm">⌃L</kbd>
                   </button>
                 </>
               )}
-              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2"></div>
+              <div className="w-px h-5 bg-white/40 dark:bg-white/10 mx-1"></div>
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10 hover:backdrop-blur-sm transition-all duration-200"
                 title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
               >
                 {theme === 'light' ? (
@@ -402,14 +409,14 @@ export default function App() {
                 )}
               </button>
               {/* User Menu */}
-              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2"></div>
+              <div className="w-px h-5 bg-white/40 dark:bg-white/10 mx-1"></div>
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-600 dark:text-gray-300 hidden sm:inline">
                   {user?.name || user?.email}
                 </span>
                 <button
                   onClick={() => { clearSession(); logout(); }}
-                  className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-red-100/60 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
                   title="Logout"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -462,16 +469,16 @@ export default function App() {
 
         {/* Mobile dropdown menu */}
         {isMobileMenuOpen && (
-          <div className="md:hidden border-t dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 space-y-1">
+          <div className="md:hidden border-t border-white/30 dark:border-white/10 backdrop-blur-md bg-white/80 dark:bg-gray-900/80 px-4 py-2 space-y-1">
             <button
               onClick={() => { clearSession(); setView('dashboard'); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg font-medium transition-all ${view === 'dashboard' ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10'}`}
             >
               Dashboard
             </button>
             <button
               onClick={() => { clearSession(); setView('upload'); setIsMobileMenuOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'upload' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg font-medium transition-all ${view === 'upload' ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10'}`}
             >
               Upload
             </button>
@@ -479,20 +486,20 @@ export default function App() {
               <>
                 <button
                   onClick={() => { setView('viewer'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'viewer' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg font-medium transition-all ${view === 'viewer' ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10'}`}
                 >
                   Viewer
                 </button>
                 <button
                   onClick={() => { setView('summary'); setIsMobileMenuOpen(false); }}
-                  className={`w-full text-left px-3 py-2 text-sm rounded-lg ${view === 'summary' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-lg font-medium transition-all ${view === 'summary' ? 'bg-gradient-to-r from-blue-600 to-violet-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10'}`}
                 >
                   Summary
                 </button>
                 {documents.length > 0 && (
                   <button
                     onClick={() => { setIsMobileDocSidebarOpen(true); setIsMobileMenuOpen(false); }}
-                    className="w-full text-left px-3 py-2 text-sm rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-white/10"
                   >
                     📄 Documents ({documents.length})
                   </button>
@@ -504,7 +511,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="relative z-10 flex-1 flex overflow-hidden">
         {view === 'dashboard' && (
           <div className="flex-1 overflow-auto">
             <Dashboard onResumeSession={resumeSession} />
@@ -578,8 +585,8 @@ export default function App() {
             {/* Mobile Document Sidebar Overlay */}
             {isMobileDocSidebarOpen && (
               <div className="md:hidden fixed inset-0 z-50 flex">
-                <div className="absolute inset-0 bg-black/50" onClick={() => setIsMobileDocSidebarOpen(false)} />
-                <div className="relative w-64 bg-white dark:bg-gray-800 shadow-xl z-10">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsMobileDocSidebarOpen(false)} />
+                <div className="relative w-64 backdrop-blur-xl bg-white/90 dark:bg-gray-900/90 border-r border-white/40 dark:border-white/10 shadow-2xl z-10">
                   <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Documents</h3>
                     <button
