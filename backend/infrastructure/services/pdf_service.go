@@ -123,6 +123,7 @@ func (s *PDFService) ProcessPDF(filePath string, filename string) (*proto.Docume
 		Pages:    int32(totalPages),
 		Chunks:   allChunks,
 		Outline:  outlineBuilder.String(),
+		FilePath: filePath, // Store for on-demand image extraction when user asks visual questions
 	}
 
 	return doc, nil

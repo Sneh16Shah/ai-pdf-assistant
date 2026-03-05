@@ -137,6 +137,32 @@ func (r *SessionRepository) AddDocument(sessionID string, document *proto.Docume
 	return nil
 }
 
+// UpdateDocument replaces an existing document in the session with an updated one.
+// Useful for appending async background processing results (like vision chunks).
+func (r *SessionRepository) UpdateDocument(sessionID string, document *proto.Document) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	session, exists := r.sessions[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	for i, doc := range session.Documents {
+		if doc.Id == document.Id {
+			session.Documents[i] = document
+			// Also update the main document if it matches
+			if session.DocumentId == document.Id {
+				session.Document = document
+			}
+			session.LastActivity = time.Now().Unix()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("document not found in session for update: %s", document.Id)
+}
+
 // GetDocuments returns all documents in a session
 func (r *SessionRepository) GetDocuments(sessionID string) ([]*proto.Document, error) {
 	r.mutex.RLock()

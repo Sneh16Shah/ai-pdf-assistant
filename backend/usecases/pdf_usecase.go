@@ -5,13 +5,24 @@ import (
 	"ai-pdf-assistant-backend/infrastructure/services"
 	"ai-pdf-assistant-backend/proto"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
 // PDFUseCase handles PDF-related business logic
 type PDFUseCase struct {
-	docRepo     *repositories.DocumentRepository
-	sessionRepo *repositories.SessionRepository
-	pdfService  *services.PDFService
+	docRepo          *repositories.DocumentRepository
+	sessionRepo      *repositories.SessionRepository
+	pdfService       *services.PDFService
+	aiService        services.AIService         // nil if enterprise pipeline disabled
+	embeddingService *services.EmbeddingService // nil if enterprise pipeline disabled
+	vectorStore      *services.VectorStore      // nil if enterprise pipeline disabled
 }
 
 // NewPDFUseCase creates a new PDF use case
@@ -27,6 +38,155 @@ func NewPDFUseCase(
 	}
 }
 
+// SetEnterpriseServices enables embedding generation on upload.
+// Called from main.go when GEMINI_API_KEY is available.
+func (uc *PDFUseCase) SetEnterpriseServices(aiService services.AIService, embeddingService *services.EmbeddingService, vectorStore *services.VectorStore) {
+	uc.aiService = aiService
+	uc.embeddingService = embeddingService
+	uc.vectorStore = vectorStore
+}
+
+// generateEmbeddings generates embeddings for all chunks in a document
+// and stores them both on the chunks and in the vector store.
+func (uc *PDFUseCase) generateEmbeddings(doc *proto.Document) {
+	if uc.embeddingService == nil || uc.vectorStore == nil {
+		return
+	}
+
+	if len(doc.Chunks) == 0 {
+		return
+	}
+
+	// Extract texts from chunks
+	texts := make([]string, len(doc.Chunks))
+	for i, chunk := range doc.Chunks {
+		texts[i] = chunk.Text
+	}
+
+	log.Printf("Generating embeddings for %d chunks of '%s'...", len(texts), doc.Filename)
+
+	// Generate embeddings via Gemini
+	embeddings, err := uc.embeddingService.EmbedBatch(texts)
+	if err != nil {
+		log.Printf("WARNING: Failed to generate embeddings for '%s': %v (enterprise search will fall back to BM25-only)", doc.Filename, err)
+		return
+	}
+
+	// Store embeddings on chunks
+	for i, emb := range embeddings {
+		if i < len(doc.Chunks) && emb != nil {
+			doc.Chunks[i].Embedding = emb
+		}
+	}
+
+	// Index in vector store for fast retrieval
+	uc.vectorStore.IndexChunks(doc.Chunks, embeddings)
+
+	log.Printf("Embeddings generated and indexed for '%s' (%d chunks, %d dimensions)",
+		doc.Filename, len(embeddings), services.EmbeddingDimension)
+}
+
+// IsVisualQuery returns true if the user message is asking about visual content
+// like charts, figures, diagrams, images, or tables.
+func IsVisualQuery(message string) bool {
+	lower := strings.ToLower(message)
+	visualKeywords := []string{
+		"figure", "fig.", "chart", "graph", "diagram", "image",
+		"picture", "illustration", "visual", "table", "plot",
+		"shows in", "shown in", "depicted", "screenshot",
+		"what does it look like", "what is shown", "what does the image",
+	}
+	for _, kw := range visualKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetVisualContext extracts images from the PDF at filePath and returns
+// AI-generated captions as a formatted string to be injected into the
+// chat context. Only called when IsVisualQuery() returns true.
+// Returns an empty string if vision is unavailable or no images found.
+func (uc *PDFUseCase) GetVisualContext(filePath string) string {
+	if uc.aiService == nil || filePath == "" {
+		return ""
+	}
+
+	// Create a temporary directory for extracted images
+	tmpDir, err := os.MkdirTemp("", "pdfimages-*")
+	if err != nil {
+		log.Printf("[Vision] Failed to create temp dir: %v", err)
+		return ""
+	}
+	defer os.RemoveAll(tmpDir)
+
+	conf := model.NewDefaultConfiguration()
+	err = api.ExtractImagesFile(filePath, tmpDir, nil, conf)
+	if err != nil {
+		log.Printf("[Vision] No images extracted (or extraction failed): %v", err)
+		return ""
+	}
+
+	files, err := os.ReadDir(tmpDir)
+	if err != nil || len(files) == 0 {
+		return ""
+	}
+
+	log.Printf("[Vision] Found %d images. Describing up to 2 for visual query...", len(files))
+
+	var captions []string
+	processed := 0
+	maxImages := 2
+
+	for _, file := range files {
+		if processed >= maxImages {
+			break
+		}
+		if file.IsDir() {
+			continue
+		}
+
+		// Skip tiny images (icons, watermarks) under 5KB
+		info, infoErr := file.Info()
+		if infoErr != nil || info.Size() < 5120 {
+			continue
+		}
+
+		imgData, err := os.ReadFile(filepath.Join(tmpDir, file.Name()))
+		if err != nil {
+			continue
+		}
+
+		// Throttle: wait before each call so we don't burst the free tier
+		if processed > 0 {
+			time.Sleep(5 * time.Second)
+		}
+
+		caption, err := uc.aiService.DescribeImage(imgData)
+		if err != nil {
+			errStr := err.Error()
+			log.Printf("[Vision] Failed to describe image %s: %v", file.Name(), err)
+			if strings.Contains(errStr, "429") || strings.Contains(errStr, "RESOURCE_EXHAUSTED") {
+				log.Printf("[Vision] Rate limit hit — stopping image description.")
+				break
+			}
+			continue
+		}
+
+		if caption != "" {
+			captions = append(captions, fmt.Sprintf("[Visual Element %d]: %s", processed+1, caption))
+			processed++
+		}
+	}
+
+	if len(captions) == 0 {
+		return ""
+	}
+
+	return "\n\n=== Visual Content from Document ===\n" + strings.Join(captions, "\n\n") + "\n==="
+}
+
 // UploadPDF processes and stores a PDF file
 func (uc *PDFUseCase) UploadPDF(filePath string, filename string) (*proto.UploadResponse, error) {
 	// Process PDF
@@ -40,6 +200,9 @@ func (uc *PDFUseCase) UploadPDF(filePath string, filename string) (*proto.Upload
 			},
 		}, nil
 	}
+
+	// Generate embeddings for enterprise pipeline (non-blocking if it fails)
+	uc.generateEmbeddings(doc)
 
 	// Store document
 	if err := uc.docRepo.Store(doc); err != nil {
@@ -104,6 +267,9 @@ func (uc *PDFUseCase) AddDocumentToSession(sessionID string, filePath string, fi
 		}, nil
 	}
 
+	// Generate embeddings for enterprise pipeline
+	uc.generateEmbeddings(doc)
+
 	// Store document
 	if err := uc.docRepo.Store(doc); err != nil {
 		return &proto.UploadResponse{
@@ -159,6 +325,9 @@ func (uc *PDFUseCase) RehydrateSession(sessionID string, filePath string, filena
 		}, nil
 	}
 
+	// Generate embeddings for enterprise pipeline
+	uc.generateEmbeddings(doc)
+
 	// Store document in memory
 	if err := uc.docRepo.Store(doc); err != nil {
 		return &proto.UploadResponse{
@@ -188,6 +357,8 @@ func (uc *PDFUseCase) RehydrateSession(sessionID string, filePath string, filena
 			}, nil
 		}
 	}
+
+	// Vision processing now happens on-demand when the user asks a visual question.
 
 	return &proto.UploadResponse{
 		Status:    proto.Status_STATUS_SUCCESS,

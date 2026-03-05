@@ -83,3 +83,7 @@ Main Topics:
 	return summary, takeaways, topics, nil
 }
 
+// DescribeImage generates a text description of an image for vector indexing
+func (s *MockAIService) DescribeImage(imageData []byte) (string, error) {
+	return "Mock description of an image showing a chart or diagram.", nil
+}

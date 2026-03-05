@@ -57,3 +57,9 @@ func (a *GroqAIServiceAdapter) GenerateSummary(text string) (string, []string, [
 
 	return summary, takeaways, topics, nil
 }
+
+// DescribeImage generates a text description of an image for vector indexing
+func (a *GroqAIServiceAdapter) DescribeImage(imageData []byte) (string, error) {
+	// Not supported by the default text-only Groq service structure without Vision model
+	return "", nil
+}

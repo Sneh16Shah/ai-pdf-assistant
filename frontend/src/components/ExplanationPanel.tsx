@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { sendMessage, sendSmartMessage, ChatMessage, Citation, SmartTokenStats, getSessionMessages } from '../services/api';
-import SmartModeToggle from './SmartModeToggle';
+import { sendMessage, sendSmartMessage, sendEnterpriseMessage, compareAllPipelines, Citation, SmartTokenStats, getSessionMessages } from '../services/api';
+import PipelineModeSelector, { PipelineMode } from './PipelineModeSelector';
+
+// Extend the API's ChatMessage with optional per-message citations
+interface MessageWithCitations {
+    role: 'user' | 'assistant';
+    content: string;
+    citations?: Citation[];
+    // For compare mode results
+    compareResults?: {
+        pipeline: string;
+        response: string;
+        latency_ms: number;
+        stats?: any;
+        citations?: Citation[];
+    }[];
+}
 
 interface ExplanationPanelProps {
     sessionId: string;
@@ -22,27 +37,29 @@ export default function ExplanationPanel({
     onGoToPage,
     onTextConsumed,
 }: ExplanationPanelProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [messages, setMessages] = useState<MessageWithCitations[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [citations, setCitations] = useState<Citation[]>([]);
     const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
-    const [smartMode, setSmartMode] = useState(false);
+    const [pipelineMode, setPipelineMode] = useState<PipelineMode>('standard');
     const [lastTokenStats, setLastTokenStats] = useState<SmartTokenStats | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const previousTextRef = useRef<string>('');
     const loadedSessionRef = useRef<string>('');
 
     // Load previous chat history from DB when session changes
+    // Note: citations are not persisted in DB currently (they require a schema change).
+    // They are preserved within the current session as they are stored per-message.
     useEffect(() => {
         if (sessionId && sessionId !== loadedSessionRef.current) {
             loadedSessionRef.current = sessionId;
             getSessionMessages(sessionId)
                 .then((dbMessages) => {
                     if (dbMessages && dbMessages.length > 0) {
-                        const loaded: ChatMessage[] = dbMessages.map((m: { role: string; content: string }) => ({
+                        const loaded: MessageWithCitations[] = dbMessages.map((m: { role: string; content: string }) => ({
                             role: m.role as 'user' | 'assistant',
                             content: m.content,
+                            // citations not available from DB — would need schema change
                         }));
                         setMessages(loaded);
                     }
@@ -57,26 +74,51 @@ export default function ExplanationPanel({
     const sendChatMessage = async (message: string) => {
         if (!message.trim() || loading) return;
 
-        const userMessage: ChatMessage = { role: 'user', content: message };
+        const userMessage: MessageWithCitations = { role: 'user', content: message };
         setMessages((prev) => [...prev, userMessage]);
         setInput('');
         setLoading(true);
 
         try {
+            if (pipelineMode === 'compare') {
+                // Handle compare mode specially
+                const compareData = await compareAllPipelines(sessionId, message, pageNumber || undefined);
+
+                const assistantMessage: MessageWithCitations = {
+                    role: 'assistant',
+                    content: "Here is how the three pipelines answered:",
+                    compareResults: compareData.results
+                };
+
+                setMessages((prev) => [...prev, assistantMessage]);
+                setGeneratedImage(null); // Diagrams not supported in compare mode yet
+                setLoading(false);
+                return;
+            }
+
             let responseData;
-            if (smartMode) {
+            if (pipelineMode === 'smart') {
                 const smartResp = await sendSmartMessage(sessionId, message, pageNumber || undefined);
                 responseData = smartResp;
                 if (smartResp.token_stats) {
                     setLastTokenStats(smartResp.token_stats);
                 }
+            } else if (pipelineMode === 'enterprise') {
+                responseData = await sendEnterpriseMessage(sessionId, message, pageNumber || undefined);
             } else {
                 responseData = await sendMessage(sessionId, message, pageNumber || undefined);
             }
-            setMessages((prev) => [...prev, { role: 'assistant', content: responseData.response }]);
-            if (responseData.citations) {
-                setCitations(responseData.citations);
-            }
+
+            // Store citations on the assistant message — not as separate state
+            const assistantMessage: MessageWithCitations = {
+                role: 'assistant',
+                content: responseData.response,
+                citations: responseData.citations && responseData.citations.length > 0
+                    ? responseData.citations
+                    : undefined,
+            };
+            setMessages((prev) => [...prev, assistantMessage]);
+
             if (responseData.image_base64 && responseData.image_mime_type) {
                 setGeneratedImage({ base64: responseData.image_base64, mimeType: responseData.image_mime_type });
             } else {
@@ -152,11 +194,11 @@ export default function ExplanationPanel({
                 </div>
             </div>
 
-            {/* Smart Mode Toggle */}
-            <SmartModeToggle
+            {/* Pipeline Mode Selector */}
+            <PipelineModeSelector
                 sessionId={sessionId}
-                isSmartMode={smartMode}
-                onToggle={setSmartMode}
+                mode={pipelineMode}
+                onModeChange={setPipelineMode}
                 lastTokenStats={lastTokenStats}
             />
 
@@ -211,46 +253,107 @@ export default function ExplanationPanel({
                 )}
 
                 {messages.map((message, index) => (
-                    <div
-                        key={index}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
+                    <div key={index}>
                         <div
-                            className={`max-w-[90%] rounded-lg p-3 ${message.role === 'user'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-                                }`}
+                            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
-                            {message.role === 'assistant' ? (
-                                <div className="prose prose-sm dark:prose-invert max-w-none">
-                                    <ReactMarkdown>{message.content}</ReactMarkdown>
-                                </div>
-                            ) : (
-                                <p className="text-sm">{message.content}</p>
-                            )}
+                            <div
+                                className={`max-w-[100%] rounded-lg p-3 ${message.role === 'user'
+                                    ? 'bg-blue-600 text-white max-w-[90%]'
+                                    : 'bg-transparent w-full p-0'
+                                    }`}
+                            >
+                                {message.role === 'assistant' ? (
+                                    message.compareResults ? (
+                                        <div className="w-full space-y-3 mt-2">
+                                            <div className="text-sm font-medium text-gray-500 mb-3">{message.content}</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                                                {message.compareResults.map((result, rIdx) => (
+                                                    <div key={rIdx} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 border border-gray-200 dark:border-gray-600 relative overflow-hidden">
+                                                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200 dark:border-gray-600">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`text-xs font-bold uppercase tracking-wider ${result.pipeline === 'enterprise' ? 'text-purple-600 dark:text-purple-400' :
+                                                                    result.pipeline === 'smart' ? 'text-emerald-600 dark:text-emerald-400' :
+                                                                        'text-gray-600 dark:text-gray-400'
+                                                                    }`}>
+                                                                    {result.pipeline === 'enterprise' ? '🚀 Enterprise' : result.pipeline === 'smart' ? '🧠 Smart' : '⚡ Standard'}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-500 font-mono border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                {result.latency_ms}ms
+                                                            </span>
+                                                        </div>
+                                                        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                                                            <ReactMarkdown>{result.response}</ReactMarkdown>
+                                                        </div>
+
+                                                        {result.pipeline === 'enterprise' &&
+                                                            result.stats?.hybrid_stats?.grounding_score > 0 && (
+                                                                <div className="mt-2 text-[10px] text-purple-600 dark:text-purple-400 flex flex-wrap gap-2 border-t border-purple-100 dark:border-purple-900/30 pt-1.5">
+                                                                    <span>Grounding: {result.stats.hybrid_stats.grounding_score.toFixed(2)}</span>
+                                                                    {result.stats.hybrid_stats.vector_candidates > 0 && <span>Chunks: {result.stats.hybrid_stats.vector_candidates}</span>}
+                                                                    {result.stats.hybrid_stats.reranked_count > 0 && <span>Reranked: {result.stats.hybrid_stats.reranked_count}</span>}
+                                                                </div>
+                                                            )}
+                                                        {result.pipeline === 'smart' &&
+                                                            (result.stats?.savings_percent > 0 || result.stats?.chunks_used > 0) && (
+                                                                <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 flex gap-3 border-t border-emerald-100 dark:border-emerald-900/30 pt-1.5">
+                                                                    {result.stats.savings_percent > 0 && <span>Tokens Saved: {result.stats.savings_percent.toFixed(0)}%</span>}
+                                                                    {result.stats.chunks_used > 0 && <span>Chunks: {result.stats.chunks_used}</span>}
+                                                                </div>
+                                                            )}
+
+                                                        {/* Inline citations for compare mode items */}
+                                                        {result.citations && result.citations.length > 0 && (
+                                                            <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                                {result.citations.map((citation: Citation, cIdx: number) => (
+                                                                    <button
+                                                                        key={cIdx}
+                                                                        onClick={() => handleCitationClick(citation.page)}
+                                                                        className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 transition-colors"
+                                                                        title={citation.text}
+                                                                    >
+                                                                        Pg {citation.page}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
+                                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                                        </div>
+                                    )
+                                ) : (
+                                    <p className="text-sm">{message.content}</p>
+                                )}
+                            </div>
                         </div>
+
+                        {/* Per-message citations — rendered directly below each assistant reply (except for compareMode which renders inline) */}
+                        {message.role === 'assistant' && !message.compareResults && message.citations && message.citations.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 px-1 mt-1">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Sources:</span>
+                                {message.citations.map((citation: Citation, citIndex: number) => (
+                                    <button
+                                        key={citIndex}
+                                        onClick={() => handleCitationClick(citation.page)}
+                                        className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
+                                        title={citation.text}
+                                    >
+                                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        Page {citation.page}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ))}
-
-                {/* Citations — shown after AI response */}
-                {citations.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 px-1">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Sources:</span>
-                        {citations.map((citation, index) => (
-                            <button
-                                key={index}
-                                onClick={() => handleCitationClick(citation.page)}
-                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
-                                title={citation.text}
-                            >
-                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                Page {citation.page}
-                            </button>
-                        ))}
-                    </div>
-                )}
 
                 {loading && (
                     <div className="flex justify-start">

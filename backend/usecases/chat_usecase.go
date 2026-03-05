@@ -16,6 +16,7 @@ type ChatUseCase struct {
 	contextBuilder  *ContextBuilder
 	visionService   *services.VisionService
 	imageGenService *services.ImageGenService
+	pdfUseCase      *PDFUseCase // For on-demand image extraction on visual queries
 }
 
 // NewChatUseCase creates a new chat use case
@@ -25,6 +26,7 @@ func NewChatUseCase(
 	vectorSearch *services.VectorSearch,
 	visionService *services.VisionService,
 	imageGenService *services.ImageGenService,
+	pdfUseCase *PDFUseCase,
 ) *ChatUseCase {
 	return &ChatUseCase{
 		sessionRepo:     sessionRepo,
@@ -33,6 +35,7 @@ func NewChatUseCase(
 		contextBuilder:  NewContextBuilder(vectorSearch),
 		visionService:   visionService,
 		imageGenService: imageGenService,
+		pdfUseCase:      pdfUseCase,
 	}
 }
 
@@ -120,12 +123,18 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 		}
 	}
 
-	// Check if this is a diagram question (and we have vision capabilities)
-	if services.IsDiagramQuestion(req.Message) && uc.visionService != nil && imageBase64 == "" {
-		fmt.Printf("INFO: Detected diagram question, vision model available for page %d\n", req.PageNumber)
-		// Note: Vision requires a rendered page image. For now, we enhance the text prompt
-		// to indicate the AI should describe any diagrams. Full image rendering will be
-		// added when we integrate a PDF-to-image renderer.
+	// If this is a visual query, fetch on-demand image captions and inject into context
+	if IsVisualQuery(req.Message) && uc.pdfUseCase != nil {
+		for _, doc := range session.Documents {
+			if doc.FilePath != "" {
+				visualCtx := uc.pdfUseCase.GetVisualContext(doc.FilePath)
+				if visualCtx != "" {
+					context += visualCtx
+					break // One doc's images is enough for now
+				}
+			}
+		}
+	} else if services.IsDiagramQuestion(req.Message) && uc.visionService != nil && imageBase64 == "" {
 		context = context + "\n\nNote: The user is asking about a visual element (diagram/chart/table). " +
 			"If the text context describes a diagram or visual structure, explain it in detail. " +
 			"Describe the components, relationships, and flow shown in the visual element."

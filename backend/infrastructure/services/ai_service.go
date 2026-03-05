@@ -15,6 +15,8 @@ import (
 type AIService interface {
 	AnswerQuestion(context string, question string, history []string) (string, bool, error)
 	GenerateSummary(text string) (string, []string, []string, error)
+	// DescribeImage generates a text description of an image for vector indexing
+	DescribeImage(imageData []byte) (string, error)
 }
 
 // PuterAIService implements AIService using Puter AI
@@ -208,6 +210,13 @@ func (s *PuterAIService) GenerateSummary(text string) (string, []string, []strin
 	return summary, takeaways, topics, nil
 }
 
+// DescribeImage generates a text description of an image for vector indexing
+func (s *PuterAIService) DescribeImage(imageData []byte) (string, error) {
+	// Puter API doesn't fully support vision in this generic chat format yet,
+	// or we don't have the explicit model configured for it here.
+	return "", fmt.Errorf("vision not supported by PuterAIService")
+}
+
 // buildQuestionPrompt builds the prompt for question answering
 func buildQuestionPrompt(context string, question string, history []string) string {
 	var builder strings.Builder
@@ -326,4 +335,3 @@ func extractTopics(summary string) []string {
 
 	return topics
 }
-

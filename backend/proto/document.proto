@@ -15,6 +15,7 @@ message Document {
   repeated Chunk chunks = 5;
   int64 created_at = 6;
   int64 updated_at = 7;
+  string file_path = 8; // Absolute path to the uploaded PDF file for on-demand image extraction
 }
 
 // Text chunk for vector search

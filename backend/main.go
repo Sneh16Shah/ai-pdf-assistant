@@ -81,7 +81,7 @@ func main() {
 
 	// Initialize use cases
 	pdfUseCase := usecases.NewPDFUseCase(docRepo, sessionRepo, pdfService)
-	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch, visionService, imageGenService)
+	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch, visionService, imageGenService, pdfUseCase)
 	summaryUseCase := usecases.NewSummaryUseCase(sessionRepo, aiService)
 
 	// Initialize auth and persistence
@@ -97,6 +97,28 @@ func main() {
 	smartContextBuilder := usecases.NewSmartContextBuilder(bm25Search, textRank, preprocessor)
 	smartChatUseCase := usecases.NewSmartChatUseCase(sessionRepo, aiService, smartContextBuilder, bm25Search, vectorSearch, visionService, imageGenService)
 	log.Println("Smart scaling services enabled (BM25 + TextRank + Preprocessing)")
+
+	// Initialize enterprise RAG pipeline services
+	var embeddingService *services.EmbeddingService
+	var enterpriseHandler *handlers.EnterpriseHandler
+	vectorStore := services.NewVectorStore()
+	citationService := services.NewCitationService()
+
+	if geminiAPIKey != "" {
+		embeddingService = services.NewEmbeddingService(geminiAPIKey)
+		reranker := services.NewRerankerService(geminiAPIKey)
+		hybridSearch := services.NewHybridSearch(bm25Search, vectorStore, embeddingService)
+		enterpriseContextBuilder := usecases.NewEnterpriseContextBuilder(hybridSearch, reranker, citationService, preprocessor)
+		enterpriseChatUseCase := usecases.NewEnterpriseChatUseCase(sessionRepo, aiService, enterpriseContextBuilder, citationService, visionService, imageGenService)
+		enterpriseHandler = handlers.NewEnterpriseHandler(enterpriseChatUseCase, smartChatUseCase, chatUseCase, persistenceRepo)
+
+		// Hook embedding generation and vision processing into PDF upload flow
+		pdfUseCase.SetEnterpriseServices(aiService, embeddingService, vectorStore)
+
+		log.Println("Enterprise RAG pipeline enabled (Embeddings + Hybrid Search + Reranking + Citations)")
+	} else {
+		log.Println("Enterprise RAG pipeline disabled (requires GEMINI_API_KEY for embeddings)")
+	}
 
 	// Initialize handlers
 	pdfHandler := handlers.NewPDFHandler(pdfUseCase, persistenceRepo)
@@ -209,6 +231,17 @@ func main() {
 		{
 			smart.POST("/message", smartChatHandler.Message)
 			smart.GET("/stats/:sessionId", smartChatHandler.Stats)
+		}
+
+		// Enterprise RAG routes (hybrid retrieval + reranking + citations)
+		if enterpriseHandler != nil {
+			enterprise := api.Group("/enterprise")
+			enterprise.Use(handlers.OptionalAuthMiddleware())
+			{
+				enterprise.POST("/message", enterpriseHandler.Message)
+				enterprise.GET("/stats/:sessionId", enterpriseHandler.Stats)
+				enterprise.POST("/compare", enterpriseHandler.Compare)
+			}
 		}
 	}
 

@@ -147,13 +147,24 @@ When multiple PDFs are uploaded, enable questions that span documents: "Compare 
 - BM25 already indexes across all session documents
 - Add document source tracking to citations
 - Enhance prompt to mention which document each chunk comes from
-- UI: Show document name in citation badges
+
+
+### 11. Landing Page & Global Metrics
+**Impact: 🔥🔥🔥 High** | **Difficulty: Easy**
+
+Create a modern home page explaining the product's value proposition and showing real-time global usage statistics to build social proof.
+
+**How to implement:**
+- Add a new root `/` landing page (move main app to `/chat` or keep as protected route).
+- Explain what the AI PDF Assistant is, its capabilities, and target audience.
+- Display live counters for: Total users, total AI-generated responses, and total documents processed.
+- Backend: Create a `metrics_service.go` to count rows occasionally and cache them (to avoid heavy COUNT(*) queries on page load).
 
 ---
 
 ## 💰 PAID Features (Require API Keys, Models, or Infrastructure)
 
-### 11. Local Embedding Search (all-MiniLM-L6-v2)
+### 12. Local Embedding Search (all-MiniLM-L6-v2)
 **Cost: Server GPU/CPU** | **Impact: 🔥🔥🔥 High** | **Difficulty: Hard**
 
 True semantic search — understands "automobile" matches "car". Runs locally but needs compute.
@@ -167,7 +178,7 @@ True semantic search — understands "automobile" matches "car". Runs locally bu
 
 ---
 
-### 12. Re-Ranking with Cross-Encoder
+### 13. Re-Ranking with Cross-Encoder
 **Cost: Server GPU** | **Impact: 🔥🔥🔥 High** | **Difficulty: Medium**
 
 After BM25 retrieves top-50 chunks, a cross-encoder re-ranks them by truly understanding query-chunk relevance.
@@ -180,7 +191,7 @@ After BM25 retrieves top-50 chunks, a cross-encoder re-ranks them by truly under
 
 ---
 
-### 13. Gemini Context Caching
+### 14. Gemini Context Caching
 **Cost: ~50% of normal token cost** | **Impact: 🔥🔥🔥 High** | **Difficulty: Easy**
 
 Gemini API supports context caching — upload the document once, then all questions reuse the cached context at half price.
@@ -193,7 +204,7 @@ Gemini API supports context caching — upload the document once, then all quest
 
 ---
 
-### 14. OCR for Scanned PDFs
+### 15. OCR for Scanned PDFs
 **Cost: Free (Tesseract) to Paid (Cloud Vision)** | **Impact: 🔥🔥 Medium** | **Difficulty: Medium**
 
 Currently only works with text-based PDFs. Scanned PDFs (images of text) produce empty text.
@@ -206,7 +217,7 @@ Currently only works with text-based PDFs. Scanned PDFs (images of text) produce
 
 ---
 
-### 15. Abstractive Summarization (LLM-Powered)
+### 16. Abstractive Summarization (LLM-Powered)
 **Cost: API tokens** | **Impact: 🔥🔥 Medium** | **Difficulty: Easy**
 
 TextRank is extractive (picks exact sentences). Abstractive summarization generates new, cleaner summaries.
@@ -219,7 +230,7 @@ TextRank is extractive (picks exact sentences). Abstractive summarization genera
 
 ---
 
-### 16. Knowledge Graph (GraphRAG)
+### 17. Knowledge Graph (GraphRAG)
 **Cost: Neo4j or Postgres + LLM extraction** | **Impact: 🔥🔥🔥 High** | **Difficulty: Hard**
 
 Build a knowledge graph of entities and relationships from the document. Enables complex reasoning queries.
@@ -232,7 +243,7 @@ Build a knowledge graph of entities and relationships from the document. Enables
 
 ---
 
-### 17. Fine-Tuned Small Model
+### 18. Fine-Tuned Small Model
 **Cost: Training compute + hosting** | **Impact: 🔥🔥🔥 High** | **Difficulty: Hard**
 
 Train a small model (like Gemma 2B or Phi-3 Mini) specifically on your document types for faster, cheaper inference.
@@ -245,7 +256,7 @@ Train a small model (like Gemma 2B or Phi-3 Mini) specifically on your document 
 
 ---
 
-### 18. Multi-Modal PDF Analysis
+### 19. Multi-Modal PDF Analysis
 **Cost: Vision API tokens** | **Impact: 🔥🔥 Medium** | **Difficulty: Medium**
 
 Analyze charts, diagrams, and images embedded in PDFs — not just text.

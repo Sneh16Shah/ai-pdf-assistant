@@ -1,7 +1,8 @@
-package services
+	package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -164,6 +165,94 @@ Document text:
 	topics := extractTopics(response)
 
 	return response, takeaways, topics, nil
+}
+
+// DescribeImage generates a text description of an image using Gemini's vision capabilities
+func (s *GeminiAIService) DescribeImage(imageData []byte) (string, error) {
+	prompt := "This is an image extracted from a document. Provide a highly detailed description of what it shows, including any text, data points, chart trends, or structural relationships, so that the information can be indexed for semantic text search."
+
+	b64Image := base64.StdEncoding.EncodeToString(imageData)
+
+	// Build multimodal content payload for Gemini
+	type inlineData struct {
+		MimeType string `json:"mime_type"`
+		Data     string `json:"data"`
+	}
+	type multimodalPart struct {
+		Text       string      `json:"text,omitempty"`
+		InlineData *inlineData `json:"inline_data,omitempty"`
+	}
+	type multimodalContent struct {
+		Role  string           `json:"role"`
+		Parts []multimodalPart `json:"parts"`
+	}
+	type multimodalReq struct {
+		Contents []multimodalContent `json:"contents"`
+	}
+
+	reqBody := multimodalReq{
+		Contents: []multimodalContent{
+			{
+				Role: "user",
+				Parts: []multimodalPart{
+					{Text: prompt},
+					{
+						InlineData: &inlineData{
+							MimeType: "image/jpeg", // Assuming JPEG for now, could be PNG
+							Data:     b64Image,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	url := fmt.Sprintf("%s/%s:generateContent?key=%s", s.baseURL, s.model, s.apiKey)
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal Gemini vision request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create Gemini vision request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Gemini vision API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read Gemini vision response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Gemini vision API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var geminiResp geminiChatResponse // Re-use the existing response struct
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		return "", fmt.Errorf("failed to parse Gemini vision response: %w", err)
+	}
+
+	if geminiResp.Error != nil {
+		return "", fmt.Errorf("Gemini vision API error: %s", geminiResp.Error.Message)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no response from Gemini vision")
+	}
+
+	var result strings.Builder
+	for _, part := range geminiResp.Candidates[0].Content.Parts {
+		result.WriteString(part.Text)
+	}
+
+	return result.String(), nil
 }
 
 func (s *GeminiAIService) makeRequest(reqBody geminiChatRequest) (string, error) {

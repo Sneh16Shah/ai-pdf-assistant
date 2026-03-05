@@ -9,16 +9,17 @@ type Document struct {
 	Pages     int32    `json:"pages"`
 	Chunks    []*Chunk `json:"chunks"`
 	Outline   string   `json:"outline,omitempty"`   // Lightweight structural summary
+	FilePath  string   `json:"file_path,omitempty"` // Absolute path to original PDF for on-demand image extraction
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
 }
 
 // Chunk represents a text chunk
 type Chunk struct {
-	Id         string   `json:"id"`
-	Text       string   `json:"text"`
-	ChunkIndex int32    `json:"chunk_index"`
-	PageNumber int32    `json:"page_number"`
+	Id         string    `json:"id"`
+	Text       string    `json:"text"`
+	ChunkIndex int32     `json:"chunk_index"`
+	PageNumber int32     `json:"page_number"`
 	Embedding  []float32 `json:"embedding,omitempty"`
 }
 
@@ -62,4 +63,3 @@ type SummaryResponse struct {
 	MainTopics   []string `json:"main_topics,omitempty"`
 	Error        *Error   `json:"error,omitempty"`
 }
-

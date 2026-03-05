@@ -302,3 +302,105 @@ export const getSmartStats = async (sessionId: string): Promise<SmartSessionStat
   const response = await api.get(`/smart/stats/${sessionId}`);
   return response.data.stats;
 };
+
+// ============ Enterprise RAG Pipeline API ============
+
+export interface HybridStats {
+  bm25_candidates: number;
+  vector_candidates: number;
+  overlap_count: number;
+  final_count: number;
+  fusion_method: string;
+}
+
+export interface CitationStats {
+  total_citations: number;
+  valid_citations: number;
+  invalid_citations: number;
+  unique_pages: number;
+  grounding_score: number;
+}
+
+export interface EnterpriseTokenStats {
+  raw_tokens: number;
+  after_preprocessing: number;
+  retrieved_tokens: number;
+  after_reranking: number;
+  final_tokens: number;
+  savings_percent: number;
+  chunks_original: number;
+  chunks_retrieved: number;
+  chunks_after_rerank: number;
+}
+
+export interface EnterpriseQueryStats {
+  token_stats: EnterpriseTokenStats;
+  hybrid_stats: HybridStats;
+  citation_stats: CitationStats;
+  pipeline: string;
+}
+
+export interface EnterpriseChatResponse extends ChatResponse {
+  pipeline: string;
+  query_stats?: EnterpriseQueryStats;
+}
+
+export interface EnterpriseSessionStats {
+  total_queries: number;
+  total_raw_tokens: number;
+  total_final_tokens: number;
+  total_saved_tokens: number;
+  avg_savings_percent: number;
+  avg_grounding_score: number;
+  total_citations: number;
+  total_valid_citations: number;
+  avg_retrieved_chunks: number;
+  avg_reranked_chunks: number;
+}
+
+export interface PipelineComparisonResult {
+  pipeline: string;
+  response: string;
+  citations?: Citation[];
+  stats?: unknown;
+  error?: string;
+  latency_ms: number;
+}
+
+export interface CompareResponse {
+  query: string;
+  results: PipelineComparisonResult[];
+}
+
+export const sendEnterpriseMessage = async (
+  sessionId: string,
+  message: string,
+  pageNumber?: number
+): Promise<EnterpriseChatResponse> => {
+  const response = await api.post<EnterpriseChatResponse>('/enterprise/message', {
+    session_id: sessionId,
+    message,
+    ...(pageNumber && { page_number: pageNumber }),
+  });
+  return response.data;
+};
+
+export const getEnterpriseStats = async (sessionId: string): Promise<EnterpriseSessionStats> => {
+  const response = await api.get(`/enterprise/stats/${sessionId}`);
+  return response.data.stats;
+};
+
+// Run the same query through all 3 pipelines (standard, smart, enterprise)
+// and get a side-by-side comparison with latency, citations, and stats.
+export const compareAllPipelines = async (
+  sessionId: string,
+  message: string,
+  pageNumber?: number
+): Promise<CompareResponse> => {
+  const response = await api.post<CompareResponse>('/enterprise/compare', {
+    session_id: sessionId,
+    message,
+    ...(pageNumber && { page_number: pageNumber }),
+  });
+  return response.data;
+};
