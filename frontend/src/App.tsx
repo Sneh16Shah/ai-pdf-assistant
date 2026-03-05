@@ -5,6 +5,7 @@ import ExplanationPanel from './components/ExplanationPanel';
 import SummaryView from './components/SummaryView';
 import DocumentSidebar from './components/DocumentSidebar';
 import LoginPage from './components/LoginPage';
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import { UploadResponse, SessionDocument, addPDFToSession, deleteDocument, getSessionDocuments, downloadDocumentPDF, rehydrateSession } from './services/api';
 import { useTheme } from './contexts/ThemeContext';
@@ -16,6 +17,7 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [view, setView] = useState<View>('upload');
+  const [showLogin, setShowLogin] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [documentInfo, setDocumentInfo] = useState<UploadResponse | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -299,9 +301,10 @@ export default function App() {
     );
   }
 
-  // Show login page if not authenticated
+  // Show landing page if not authenticated
   if (!isAuthenticated) {
-    return <LoginPage />;
+    if (showLogin) return <LoginPage onGoHome={() => setShowLogin(false)} />;
+    return <LandingPage onGetStarted={() => setShowLogin(true)} />;
   }
 
   return (

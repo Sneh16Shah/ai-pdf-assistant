@@ -89,6 +89,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(userRepo)
 	persistenceRepo := repositories.NewPersistenceRepository()
 	userHandler := handlers.NewUserHandler(persistenceRepo)
+	metricsRepo := repositories.NewMetricsRepository()
+	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
 
 	// Initialize smart scaling services (BM25 + TextRank + Preprocessing)
 	bm25Search := services.NewBM25Search()
@@ -181,6 +183,9 @@ func main() {
 		}
 		api.GET("/health", healthHandler)
 		api.HEAD("/health", healthHandler)
+
+		// Metrics route (public — no auth required)
+		api.GET("/metrics", metricsHandler.GetMetrics)
 
 		// Auth routes (public)
 		auth := api.Group("/auth")

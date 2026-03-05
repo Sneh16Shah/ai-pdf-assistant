@@ -404,3 +404,19 @@ export const compareAllPipelines = async (
   });
   return response.data;
 };
+
+// ─── Public Landing Page Metrics ──────────────────────────────────────────────
+
+export interface GlobalMetrics {
+  total_users: number;
+  total_documents: number;
+  total_responses: number;
+  cached_at: number;
+}
+
+export const getGlobalMetrics = async (): Promise<GlobalMetrics> => {
+  // Uses fetch directly — no auth header needed for this public endpoint
+  const res = await fetch(`${API_BASE_URL.replace('/api/v1', '')}/api/v1/metrics`);
+  if (!res.ok) throw new Error('Failed to fetch metrics');
+  return res.json();
+};

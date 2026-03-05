@@ -149,7 +149,7 @@ When multiple PDFs are uploaded, enable questions that span documents: "Compare 
 - Enhance prompt to mention which document each chunk comes from
 
 
-### 11. Landing Page & Global Metrics
+### 11. Landing Page & Global Metrics 🚧 *In Progress*
 **Impact: 🔥🔥🔥 High** | **Difficulty: Easy**
 
 Create a modern home page explaining the product's value proposition and showing real-time global usage statistics to build social proof.
@@ -294,4 +294,4 @@ Analyze charts, diagrams, and images embedded in PDFs — not just text.
 
 ---
 
-*Last updated: 2026-03-01*
+*Last updated: 2026-03-05*
