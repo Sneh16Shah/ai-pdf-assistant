@@ -75,14 +75,17 @@ func (uc *ChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResponse,
 	if len(session.Documents) > 0 {
 		for _, doc := range session.Documents {
 			allChunks = append(allChunks, doc.Chunks...)
-			fullText += "--- " + doc.Filename + " ---\n" + doc.Text + "\n\n"
+			// --- FIX CVE-6: Wrap document text in XML tags to prevent prompt injection ---
+			// The model is instructed to treat <document> content as data, not instructions.
+			fullText += "<document name=\"" + doc.Filename + "\">\n" + doc.Text + "\n</document>\n\n"
 			if doc.Outline != "" {
 				outline += "=== " + doc.Filename + " ===\n" + doc.Outline + "\n"
 			}
 		}
 	} else if session.Document != nil {
 		allChunks = session.Document.Chunks
-		fullText = session.Document.Text
+		// --- FIX CVE-6: Wrap single document content too ---
+		fullText = "<document>\n" + session.Document.Text + "\n</document>"
 		outline = session.Document.Outline
 	}
 

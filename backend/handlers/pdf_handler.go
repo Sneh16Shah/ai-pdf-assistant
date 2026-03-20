@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"ai-pdf-assistant-backend/infrastructure/repositories"
@@ -14,6 +16,42 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// sanitizeFilename strips all directory traversal sequences from a filename.
+// It returns only the base filename, rejecting names that are still
+// suspicious (empty or start with a dot).
+func sanitizeFilename(name string) (string, bool) {
+	base := filepath.Base(filepath.Clean(name))
+	if base == "." || base == "" || strings.HasPrefix(base, "..") {
+		return "", false
+	}
+	return base, true
+}
+
+// validatePDF reads the first 512 bytes from the reader to detect the MIME type
+// and confirms it is application/pdf. It returns the full reader with the peeked
+// bytes prepended so the caller can still read the complete file.
+func validatePDF(r io.Reader) (io.Reader, error) {
+	header := make([]byte, 512)
+	n, err := io.ReadFull(r, header)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return nil, err
+	}
+	header = header[:n]
+
+	mime := http.DetectContentType(header)
+	if mime != "application/pdf" {
+		return nil, &pdfValidationError{mime: mime}
+	}
+	// Re-assemble the full reader: prepend the already-read header bytes.
+	return io.MultiReader(bytes.NewReader(header), r), nil
+}
+
+type pdfValidationError struct{ mime string }
+
+func (e *pdfValidationError) Error() string {
+	return "uploaded file is not a PDF (detected: " + e.mime + ")"
+}
 
 // PDFHandler handles PDF-related HTTP requests
 type PDFHandler struct {
@@ -47,8 +85,23 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 	}
 	os.MkdirAll(uploadDir, 0755)
 
-	// Save uploaded file
-	filename := header.Filename
+	// --- FIX CVE-4: Validate file is actually a PDF before touching disk ---
+	safeReader, err := validatePDF(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid file type: " + err.Error(),
+		})
+		return
+	}
+
+	// --- FIX CVE-1: Sanitize filename to prevent path traversal ---
+	filename, ok := sanitizeFilename(header.Filename)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid filename",
+		})
+		return
+	}
 	filePath := filepath.Join(uploadDir, filename)
 
 	out, err := os.Create(filePath)
@@ -60,7 +113,7 @@ func (h *PDFHandler) Upload(c *gin.Context) {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, file)
+	_, err = io.Copy(out, safeReader)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to copy file: " + err.Error(),
@@ -153,7 +206,23 @@ func (h *PDFHandler) Rehydrate(c *gin.Context) {
 	}
 	os.MkdirAll(uploadDir, 0755)
 
-	filename := header.Filename
+	// --- FIX CVE-4: Validate file is actually a PDF before touching disk ---
+	safeReader, err := validatePDF(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid file type: " + err.Error(),
+		})
+		return
+	}
+
+	// --- FIX CVE-1: Sanitize filename to prevent path traversal ---
+	filename, ok := sanitizeFilename(header.Filename)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid filename",
+		})
+		return
+	}
 	filePath := filepath.Join(uploadDir, filename)
 
 	out, err := os.Create(filePath)
@@ -165,7 +234,7 @@ func (h *PDFHandler) Rehydrate(c *gin.Context) {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, file)
+	_, err = io.Copy(out, safeReader)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to copy file: " + err.Error(),
@@ -304,8 +373,23 @@ func (h *PDFHandler) AddToSession(c *gin.Context) {
 	}
 	os.MkdirAll(uploadDir, 0755)
 
-	// Save uploaded file
-	filename := header.Filename
+	// --- FIX CVE-4: Validate file is actually a PDF before touching disk ---
+	safeReader, err := validatePDF(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid file type: " + err.Error(),
+		})
+		return
+	}
+
+	// --- FIX CVE-1: Sanitize filename to prevent path traversal ---
+	filename, ok := sanitizeFilename(header.Filename)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid filename",
+		})
+		return
+	}
 	filePath := filepath.Join(uploadDir, filename)
 
 	out, err := os.Create(filePath)
@@ -317,7 +401,7 @@ func (h *PDFHandler) AddToSession(c *gin.Context) {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, file)
+	_, err = io.Copy(out, safeReader)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to copy file: " + err.Error(),

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -125,11 +126,13 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// generateToken creates a new JWT token for the given user ID
+// generateToken creates a new JWT token for the given user ID.
+// Returns an error if JWT_SECRET is not configured.
 func generateToken(userID string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "your-super-secret-jwt-key-change-in-production"
+		// --- FIX CVE-2: Never fall back to a hardcoded secret ---
+		return "", fmt.Errorf("JWT_SECRET environment variable is not set")
 	}
 
 	claims := jwt.MapClaims{
@@ -162,13 +165,19 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		tokenString := parts[1]
 
-		// Parse and validate token
+		// --- FIX CVE-2: Require JWT_SECRET to be set ---
 		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
-			secret = "your-super-secret-jwt-key-change-in-production"
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server misconfiguration"})
+			c.Abort()
+			return
 		}
 
+		// --- FIX: Validate signing algorithm to prevent alg:none attacks ---
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
 			return []byte(secret), nil
 		})
 
@@ -215,12 +224,18 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 		}
 
 		tokenString := parts[1]
+		// --- FIX CVE-2: Require JWT_SECRET to be set ---
 		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
-			secret = "your-super-secret-jwt-key-change-in-production"
+			c.Next() // misconfigured — skip optional auth silently and continue unauthenticated
+			return
 		}
 
+		// --- FIX: Validate signing algorithm to prevent alg:none attacks ---
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
 			return []byte(secret), nil
 		})
 

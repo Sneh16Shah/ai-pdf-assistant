@@ -25,6 +25,12 @@ func main() {
 		log.Println("No .env file found, using defaults")
 	}
 
+	// --- FIX CVE-2: Enforce JWT_SECRET at startup ---
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("FATAL: JWT_SECRET environment variable is not set. " +
+			"Generate a strong secret and add it to your .env file before starting the server.")
+	}
+
 	// Initialize database connection
 	if err := database.Connect(); err != nil {
 		log.Printf("Warning: Could not connect to database: %v", err)
@@ -134,10 +140,11 @@ func main() {
 	// Initialize Gin router
 	r := gin.Default()
 
-	// Configure CORS
+	// --- FIX CVE-3: Tightened CORS — removed wildcard chrome-extension allowlist ---
 	config := cors.DefaultConfig()
 	config.AllowOriginFunc = func(origin string) bool {
-		// 1. Allow origins specified in ALLOWED_ORIGINS env var (e.g., "https://my-frontend.onrender.com")
+		// 1. Allow origins specified in ALLOWED_ORIGINS env var
+		//    (e.g., "https://my-frontend.onrender.com,chrome-extension://EXACT_ID_HERE")
 		envOrigins := os.Getenv("ALLOWED_ORIGINS")
 		if envOrigins != "" {
 			for _, allowed := range strings.Split(envOrigins, ",") {
@@ -158,17 +165,18 @@ func main() {
 			return true
 		}
 
-		// 3. Allow Chrome extension origins
-		if len(origin) > 19 && origin[:19] == "chrome-extension://" {
-			return true
-		}
-
+		// NOTE: Chrome extension origins are NO LONGER allowed by wildcard.
+		// To whitelist your extension, add its exact origin to ALLOWED_ORIGINS:
+		//   ALLOWED_ORIGINS=https://your-frontend.com,chrome-extension://YOUR_EXTENSION_ID
 		return false
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
+
+	// --- FIX CVE-5: IP-based Rate Limiting ---
+	r.Use(rateLimitMiddleware())
 
 	// API Routes
 	api := r.Group("/api/v1")
