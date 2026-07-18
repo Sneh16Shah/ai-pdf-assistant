@@ -35,10 +35,21 @@ code {
   background-color: rgba(59, 130, 246, 0.3);
 }
 
-/* Prose styling for markdown */
+/* Prose styling for markdown.
+   Note: the @tailwindcss/typography plugin is NOT installed, so `prose` and
+   `dark:prose-invert` classes are styled manually here. Text color MUST be set
+   explicitly (including for dark mode), otherwise <p>/<li> inherit the browser
+   default black and become unreadable on dark card backgrounds. */
 .prose {
   font-size: 0.875rem;
   line-height: 1.6;
+  color: #1f2937; /* gray-800 — readable default for light backgrounds */
+}
+
+/* dark:prose-invert equivalent — applies when a .dark ancestor is present
+   (darkMode: 'class' is set in tailwind.config.js) */
+.dark .prose {
+  color: #e5e7eb; /* gray-200 */
 }
 
 .prose p {
@@ -51,6 +62,7 @@ code {
 
 .prose strong {
   font-weight: 600;
+  color: inherit; /* keep readable; was unset */
 }
 
 .prose ul, .prose ol {
@@ -62,11 +74,24 @@ code {
   margin: 0.25rem 0;
 }
 
+.prose a {
+  color: #2563eb; /* blue-600 */
+  text-decoration: underline;
+}
+
+.dark .prose a {
+  color: #93c5fd; /* blue-300 */
+}
+
 .prose code {
   background-color: #f3f4f6;
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
   font-size: 0.8em;
+}
+
+.dark .prose code {
+  background-color: #374151; /* gray-700 */
 }
 
 .prose pre {
@@ -81,6 +106,22 @@ code {
 .prose pre code {
   background-color: transparent;
   padding: 0;
+}
+
+/* Keep headings readable in dark mode too */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  color: inherit;
+  font-weight: 600;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.prose hr {
+  border-color: #e5e7eb;
+  margin: 1rem 0;
+}
+
+.dark .prose hr {
+  border-color: #4b5563; /* gray-600 */
 }
 
 /* Line clamp utility */
