@@ -3,6 +3,12 @@ import { SmartTokenStats, getSmartStats, SmartSessionStats } from '../services/a
 
 export type PipelineMode = 'standard' | 'smart' | 'enterprise' | 'compare';
 
+// Feature flag: Smart/Enterprise/Compare pipelines are gated behind local dev.
+// Set VITE_ADVANCED_PIPELINES=true in frontend/.env.local to enable them.
+// In production builds (no .env.local) the flag is undefined → advanced modes are hidden.
+const ADVANCED_PIPELINES_ENABLED =
+    import.meta.env.VITE_ADVANCED_PIPELINES === 'true';
+
 interface PipelineModeSelectorProps {
     sessionId: string;
     mode: PipelineMode;
@@ -10,7 +16,7 @@ interface PipelineModeSelectorProps {
     lastTokenStats?: SmartTokenStats | null;
 }
 
-const MODES: { id: PipelineMode; label: string; icon: string; description: string; color: string }[] = [
+const ALL_MODES: { id: PipelineMode; label: string; icon: string; description: string; color: string }[] = [
     {
         id: 'standard',
         label: 'Standard',
@@ -41,6 +47,11 @@ const MODES: { id: PipelineMode; label: string; icon: string; description: strin
     },
 ];
 
+// Standard is always available; the rest are feature-flagged.
+const MODES = ADVANCED_PIPELINES_ENABLED
+    ? ALL_MODES
+    : ALL_MODES.filter((m) => m.id === 'standard');
+
 const COLOR_CLASSES: Record<string, { active: string; text: string; ring: string }> = {
     gray: { active: 'bg-gray-600 text-white', text: 'text-gray-600 dark:text-gray-400', ring: 'ring-gray-400' },
     emerald: { active: 'bg-emerald-600 text-white', text: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-400' },
@@ -64,10 +75,19 @@ export default function PipelineModeSelector({
         }
     }, [lastTokenStats, sessionId, mode]);
 
+    // Hide the selector entirely when only Standard is available —
+    // a single disabled-looking tab with nothing to switch to adds noise.
+    if (MODES.length <= 1) {
+        return null;
+    }
+
     return (
         <div className="flex flex-col gap-1.5 px-3 py-2 border-b dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
             {/* Mode Tabs */}
-            <div className="grid grid-cols-4 gap-1 bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5">
+            <div
+                className="grid gap-1 bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5"
+                style={{ gridTemplateColumns: `repeat(${MODES.length}, minmax(0, 1fr))` }}
+            >
                 {MODES.map((m) => {
                     const isActive = mode === m.id;
                     const colors = COLOR_CLASSES[m.color];

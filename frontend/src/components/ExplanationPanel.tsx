@@ -3,6 +3,11 @@ import ReactMarkdown from 'react-markdown';
 import { sendMessage, sendSmartMessage, sendEnterpriseMessage, compareAllPipelines, Citation, SmartTokenStats, getSessionMessages } from '../services/api';
 import PipelineModeSelector, { PipelineMode } from './PipelineModeSelector';
 
+// Mirrors the flag in PipelineModeSelector — when advanced pipelines are hidden,
+// force Standard so we never call the gated endpoints.
+const ADVANCED_PIPELINES_ENABLED =
+    import.meta.env.VITE_ADVANCED_PIPELINES === 'true';
+
 // Extend the API's ChatMessage with optional per-message citations
 interface MessageWithCitations {
     role: 'user' | 'assistant';
@@ -42,6 +47,10 @@ export default function ExplanationPanel({
     const [loading, setLoading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
     const [pipelineMode, setPipelineMode] = useState<PipelineMode>('standard');
+
+    // Guard: if advanced pipelines are disabled, ignore any attempt to switch
+    // off Standard. Belt-and-suspenders alongside the hidden selector.
+    const effectiveMode: PipelineMode = ADVANCED_PIPELINES_ENABLED ? pipelineMode : 'standard';
     const [lastTokenStats, setLastTokenStats] = useState<SmartTokenStats | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const previousTextRef = useRef<string>('');
@@ -80,7 +89,7 @@ export default function ExplanationPanel({
         setLoading(true);
 
         try {
-            if (pipelineMode === 'compare') {
+            if (effectiveMode === 'compare') {
                 // Handle compare mode specially
                 const compareData = await compareAllPipelines(sessionId, message, pageNumber || undefined);
 
@@ -97,13 +106,13 @@ export default function ExplanationPanel({
             }
 
             let responseData;
-            if (pipelineMode === 'smart') {
+            if (effectiveMode === 'smart') {
                 const smartResp = await sendSmartMessage(sessionId, message, pageNumber || undefined);
                 responseData = smartResp;
                 if (smartResp.token_stats) {
                     setLastTokenStats(smartResp.token_stats);
                 }
-            } else if (pipelineMode === 'enterprise') {
+            } else if (effectiveMode === 'enterprise') {
                 responseData = await sendEnterpriseMessage(sessionId, message, pageNumber || undefined);
             } else {
                 responseData = await sendMessage(sessionId, message, pageNumber || undefined);
