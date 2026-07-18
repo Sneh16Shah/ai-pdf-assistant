@@ -74,16 +74,31 @@ func main() {
 		log.Println("Using Mock AI service (set GEMINI_API_KEY for best experience)")
 	}
 
-	// Initialize vision service (uses Groq API with Llama 4 Scout)
+	// Initialize vision service (NVIDIA NIM > Groq)
 	var visionService *services.VisionService
-	if groqAPIKey != "" {
+	nvidiaVLMKey := os.Getenv("NVIDIA_VLM_API_KEY")
+	if nvidiaVLMKey != "" {
+		nvidiaVision := services.NewNvidiaVisionService(nvidiaVLMKey)
+		// Wrap NVIDIA vision in a compatible VisionService adapter
+		visionService = services.NewVisionServiceFromNvidia(nvidiaVision)
+		log.Println("Vision service enabled (NVIDIA NIM — llama-3.2-90b-vision-instruct)")
+	} else if groqAPIKey != "" {
 		visionService = services.NewVisionService(groqAPIKey)
-		log.Println("Vision service enabled (Llama 4 Scout)")
+		log.Println("Vision service enabled (Groq — Llama 4 Scout)")
 	}
 
-	// Initialize image generation service (Pollinations.ai — free, no API key needed)
-	imageGenService := services.NewImageGenService("")
-	log.Println("Image generation enabled (Pollinations.ai)")
+	// Initialize image generation service (NVIDIA NIM > Pollinations.ai)
+	var imageGenService *services.ImageGenService
+	nvidiaImageGenKey := os.Getenv("NVIDIA_IMAGEGEN_API_KEY")
+	if nvidiaImageGenKey != "" {
+		nvidiaImgGen := services.NewNvidiaImageGenService(nvidiaImageGenKey)
+		// Wrap NVIDIA image gen in a compatible ImageGenService adapter
+		imageGenService = services.NewImageGenServiceFromNvidia(nvidiaImgGen)
+		log.Println("Image generation enabled (NVIDIA NIM — FLUX.1-dev)")
+	} else {
+		imageGenService = services.NewImageGenService("")
+		log.Println("Image generation enabled (Pollinations.ai)")
+	}
 
 	// Initialize use cases
 	pdfUseCase := usecases.NewPDFUseCase(docRepo, sessionRepo, pdfService)
@@ -106,26 +121,50 @@ func main() {
 	smartChatUseCase := usecases.NewSmartChatUseCase(sessionRepo, aiService, smartContextBuilder, bm25Search, vectorSearch, visionService, imageGenService)
 	log.Println("Smart scaling services enabled (BM25 + TextRank + Preprocessing)")
 
-	// Initialize enterprise RAG pipeline services
-	var embeddingService *services.EmbeddingService
+	// Initialize enterprise RAG pipeline services (NVIDIA NIM > Gemini)
 	var enterpriseHandler *handlers.EnterpriseHandler
 	vectorStore := services.NewVectorStore()
 	citationService := services.NewCitationService()
 
-	if geminiAPIKey != "" {
-		embeddingService = services.NewEmbeddingService(geminiAPIKey)
-		reranker := services.NewRerankerService(geminiAPIKey)
-		hybridSearch := services.NewHybridSearch(bm25Search, vectorStore, embeddingService)
+	// Determine embedding service: NVIDIA > Gemini
+	nvidiaEmbedKey := os.Getenv("NVIDIA_EMBED_API_KEY")
+	var embedder services.Embedder
+	if nvidiaEmbedKey != "" {
+		embedder = services.NewNvidiaEmbeddingService(nvidiaEmbedKey)
+		log.Println("Embedding service enabled (NVIDIA NIM — llama-nemotron-embed-vl-1b-v2)")
+	} else if geminiAPIKey != "" {
+		embedder = services.NewEmbeddingService(geminiAPIKey)
+		log.Println("Embedding service enabled (Gemini — text-embedding-004)")
+	}
+
+	// Determine reranker service: NVIDIA > Gemini
+	nvidiaRerankKey := os.Getenv("NVIDIA_RERANK_API_KEY")
+	var reranker services.Reranker
+	if nvidiaRerankKey != "" {
+		reranker = services.NewNvidiaRerankerService(nvidiaRerankKey)
+		log.Println("Reranker service enabled (NVIDIA NIM — llama-nemotron-rerank-1b-v2)")
+	} else if geminiAPIKey != "" {
+		reranker = services.NewRerankerService(geminiAPIKey)
+		log.Println("Reranker service enabled (Gemini — prompt-based)")
+	}
+
+	if embedder != nil {
+		hybridSearch := services.NewHybridSearch(bm25Search, vectorStore, embedder)
+
+		if reranker == nil {
+			log.Println("Reranker unavailable, enterprise pipeline will skip reranking")
+		}
+
 		enterpriseContextBuilder := usecases.NewEnterpriseContextBuilder(hybridSearch, reranker, citationService, preprocessor)
 		enterpriseChatUseCase := usecases.NewEnterpriseChatUseCase(sessionRepo, aiService, enterpriseContextBuilder, citationService, visionService, imageGenService)
 		enterpriseHandler = handlers.NewEnterpriseHandler(enterpriseChatUseCase, smartChatUseCase, chatUseCase, persistenceRepo)
 
-		// Hook embedding generation and vision processing into PDF upload flow
-		pdfUseCase.SetEnterpriseServices(aiService, embeddingService, vectorStore)
+		// Hook embedding generation into PDF upload flow
+		pdfUseCase.SetEnterpriseServices(aiService, embedder, vectorStore)
 
 		log.Println("Enterprise RAG pipeline enabled (Embeddings + Hybrid Search + Reranking + Citations)")
 	} else {
-		log.Println("Enterprise RAG pipeline disabled (requires GEMINI_API_KEY for embeddings)")
+		log.Println("Enterprise RAG pipeline disabled (requires NVIDIA_EMBED_API_KEY or GEMINI_API_KEY)")
 	}
 
 	// Initialize handlers

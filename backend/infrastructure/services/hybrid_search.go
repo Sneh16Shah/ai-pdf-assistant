@@ -15,7 +15,7 @@ import (
 type HybridSearch struct {
 	bm25        *BM25Search
 	vectorStore *VectorStore
-	embedder    *EmbeddingService
+	embedder    Embedder // accepts both Gemini and NVIDIA embedding services
 	// RRF constant — standard value is 60
 	rrrK int
 }
@@ -42,7 +42,7 @@ type HybridStats struct {
 }
 
 // NewHybridSearch creates a new hybrid search combining BM25 + Vector
-func NewHybridSearch(bm25 *BM25Search, vectorStore *VectorStore, embedder *EmbeddingService) *HybridSearch {
+func NewHybridSearch(bm25 *BM25Search, vectorStore *VectorStore, embedder Embedder) *HybridSearch {
 	return &HybridSearch{
 		bm25:        bm25,
 		vectorStore: vectorStore,

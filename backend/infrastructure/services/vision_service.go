@@ -12,11 +12,13 @@ import (
 )
 
 // VisionService handles diagram understanding using Groq's Llama 4 Scout (vision model)
+// or NVIDIA NIM's llama-3.2-90b-vision-instruct when configured.
 type VisionService struct {
-	apiKey  string
-	baseURL string
-	model   string
-	client  *http.Client
+	apiKey       string
+	baseURL      string
+	model        string
+	client       *http.Client
+	nvidiaBackend *NvidiaVisionService // non-nil when using NVIDIA
 }
 
 // NewVisionService creates a new vision service using Groq
@@ -28,6 +30,13 @@ func NewVisionService(groqAPIKey string) *VisionService {
 		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
+	}
+}
+
+// NewVisionServiceFromNvidia creates a VisionService that delegates to the NVIDIA backend
+func NewVisionServiceFromNvidia(nvidia *NvidiaVisionService) *VisionService {
+	return &VisionService{
+		nvidiaBackend: nvidia,
 	}
 }
 
@@ -89,6 +98,11 @@ type visionResponse struct {
 
 // DescribePageImage sends a page image to the vision model for understanding
 func (v *VisionService) DescribePageImage(imageData []byte, question string, textContext string) (string, error) {
+	// Delegate to NVIDIA backend if configured
+	if v.nvidiaBackend != nil {
+		return v.nvidiaBackend.DescribePageImage(imageData, question, textContext)
+	}
+
 	if v.apiKey == "" {
 		return "", fmt.Errorf("GROQ_API_KEY not set, vision service unavailable")
 	}

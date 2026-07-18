@@ -11,8 +11,10 @@ import (
 )
 
 // ImageGenService handles AI image generation using Pollinations.ai
+// or NVIDIA NIM's FLUX.1-dev when configured.
 type ImageGenService struct {
-	client *http.Client
+	client        *http.Client
+	nvidiaBackend *NvidiaImageGenService // non-nil when using NVIDIA
 }
 
 // NewImageGenService creates a new image generation service
@@ -24,17 +26,32 @@ func NewImageGenService(_ string) *ImageGenService {
 	}
 }
 
+// NewImageGenServiceFromNvidia creates an ImageGenService that delegates to the NVIDIA backend
+func NewImageGenServiceFromNvidia(nvidia *NvidiaImageGenService) *ImageGenService {
+	return &ImageGenService{
+		nvidiaBackend: nvidia,
+	}
+}
+
 // IsAvailable checks if the image generation service has an API key configured (always true for Pollinations)
 func (s *ImageGenService) IsAvailable() bool {
+	if s.nvidiaBackend != nil {
+		return s.nvidiaBackend.IsAvailable()
+	}
 	return true
 }
 
 // ImageGenerationKeywords are terms that suggest the user wants an image generated
 var ImageGenerationKeywords = []string{
-	"draw", "generate image", "create diagram", "create image",
-	"make a diagram", "illustrate", "visualize", "sketch",
-	"generate a", "draw a", "make a", "create a chart",
+	"draw", "generate image", "generate an image", "generate a image",
+	"create diagram", "create image", "create an image", "create a image",
+	"make a diagram", "make an image", "make a image", "make image",
+	"illustrate", "visualize", "sketch",
+	"generate a", "draw a", "draw an", "make a", "create a chart",
 	"simpler version", "simplified diagram", "redraw",
+	"generate a diagram", "generate diagram",
+	"can you generate", "can you draw", "can you create",
+	"similar to figure", "like figure", "based on figure",
 }
 
 // IsImageGenRequest checks if the user's question is asking for image generation
@@ -57,6 +74,11 @@ type ImageGenResult struct {
 
 // GenerateImage generates an image based on a text prompt
 func (s *ImageGenService) GenerateImage(prompt string) (*ImageGenResult, error) {
+	// Delegate to NVIDIA backend if configured
+	if s.nvidiaBackend != nil {
+		return s.nvidiaBackend.GenerateImage(prompt)
+	}
+
 	encodedPrompt := url.PathEscape(prompt)
 	apiURL := fmt.Sprintf("https://image.pollinations.ai/prompt/%s?width=800&height=600&nologo=true", encodedPrompt)
 
@@ -92,6 +114,11 @@ func (s *ImageGenService) GenerateImage(prompt string) (*ImageGenResult, error) 
 
 // GenerateImageFromContext generates a diagram based on document context
 func (s *ImageGenService) GenerateImageFromContext(userRequest string, documentContext string) (*ImageGenResult, error) {
+	// Delegate to NVIDIA backend if configured
+	if s.nvidiaBackend != nil {
+		return s.nvidiaBackend.GenerateImageFromContext(userRequest, documentContext)
+	}
+
 	// Extract a short summary for the image prompt (Pollinations uses GET URLs, so prompt must be short)
 	contextSnippet := truncateForPrompt(documentContext, 200)
 	prompt := fmt.Sprintf("Professional diagram: %s. Context: %s. Clean, labeled, modern style.",

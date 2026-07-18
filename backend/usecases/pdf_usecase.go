@@ -20,9 +20,9 @@ type PDFUseCase struct {
 	docRepo          *repositories.DocumentRepository
 	sessionRepo      *repositories.SessionRepository
 	pdfService       *services.PDFService
-	aiService        services.AIService         // nil if enterprise pipeline disabled
-	embeddingService *services.EmbeddingService // nil if enterprise pipeline disabled
-	vectorStore      *services.VectorStore      // nil if enterprise pipeline disabled
+	aiService        services.AIService  // nil if enterprise pipeline disabled
+	embeddingService services.Embedder   // nil if enterprise pipeline disabled (accepts Gemini or NVIDIA)
+	vectorStore      *services.VectorStore // nil if enterprise pipeline disabled
 }
 
 // NewPDFUseCase creates a new PDF use case
@@ -39,8 +39,8 @@ func NewPDFUseCase(
 }
 
 // SetEnterpriseServices enables embedding generation on upload.
-// Called from main.go when GEMINI_API_KEY is available.
-func (uc *PDFUseCase) SetEnterpriseServices(aiService services.AIService, embeddingService *services.EmbeddingService, vectorStore *services.VectorStore) {
+// Called from main.go when embedding service is available (Gemini or NVIDIA).
+func (uc *PDFUseCase) SetEnterpriseServices(aiService services.AIService, embeddingService services.Embedder, vectorStore *services.VectorStore) {
 	uc.aiService = aiService
 	uc.embeddingService = embeddingService
 	uc.vectorStore = vectorStore

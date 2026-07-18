@@ -17,7 +17,7 @@ import (
 // Azure AI Search, Cohere RAG, and most enterprise AI deployments.
 type EnterpriseContextBuilder struct {
 	hybridSearch    *services.HybridSearch
-	reranker        *services.RerankerService
+	reranker        services.Reranker // accepts both Gemini and NVIDIA reranker
 	citationService *services.CitationService
 	preprocessor    *services.Preprocessor
 }
@@ -48,7 +48,7 @@ type EnterpriseTokenStats struct {
 // NewEnterpriseContextBuilder creates a new enterprise context builder
 func NewEnterpriseContextBuilder(
 	hybridSearch *services.HybridSearch,
-	reranker *services.RerankerService,
+	reranker services.Reranker,
 	citationService *services.CitationService,
 	preprocessor *services.Preprocessor,
 ) *EnterpriseContextBuilder {
