@@ -255,7 +255,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                         </div>
                         <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">AskMyPDF</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-500">© 2026 AskMyPDF · AI-powered PDF conversations</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">© 2026 AskMyPDF · AI-powered PDF conversations</p>
                     <button onClick={onGetStarted} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
                         Get Started →
                     </button>
