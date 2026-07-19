@@ -23,6 +23,8 @@ type PDFUseCase struct {
 	aiService        services.AIService  // nil if enterprise pipeline disabled
 	embeddingService services.Embedder   // nil if enterprise pipeline disabled (accepts Gemini or NVIDIA)
 	vectorStore      *services.VectorStore // nil if enterprise pipeline disabled
+	markitdown       *services.MarkItDownService // nil = basic parser only (all pipelines)
+	markdownChunker  *services.MarkdownChunker
 }
 
 // NewPDFUseCase creates a new PDF use case
@@ -46,24 +48,71 @@ func (uc *PDFUseCase) SetEnterpriseServices(aiService services.AIService, embedd
 	uc.vectorStore = vectorStore
 }
 
+// SetMarkItDownService enables Markdown conversion via the MarkItDown sidecar.
+// Called from main.go when MARKITDOWN_URL is set. Pass nil to disable — uploads
+// then fall back to the basic parser for all pipelines (Standard/Smart/Enterprise).
+func (uc *PDFUseCase) SetMarkItDownService(md *services.MarkItDownService) {
+	uc.markitdown = md
+	if md != nil {
+		uc.markdownChunker = services.NewMarkdownChunker()
+	}
+}
+
+// enrichWithMarkdown converts the PDF to Markdown via the sidecar (if configured)
+// and attaches the result to the document. Non-fatal: on any error, the document
+// keeps its basic Chunks/Text and Smart/Enterprise pipelines fall back to those.
+func (uc *PDFUseCase) enrichWithMarkdown(doc *proto.Document) {
+	if uc.markitdown == nil || uc.markdownChunker == nil || doc == nil {
+		return
+	}
+
+	result, err := uc.markitdown.ConvertFile(doc.FilePath)
+	if err != nil {
+		log.Printf("MarkItDown failed for '%s': %v (falling back to basic chunks)", doc.Filename, err)
+		return
+	}
+	if strings.TrimSpace(result.Markdown) == "" {
+		return
+	}
+
+	doc.MarkdownText = result.Markdown
+	doc.MarkdownChunks = uc.markdownChunker.Chunk(result.Markdown)
+	doc.MarkdownOutline = uc.markdownChunker.BuildOutline(result.Markdown)
+	doc.MarkdownSource = "markitdown"
+
+	log.Printf("MarkItDown enriched '%s': %d markdown chunks, %d outline lines",
+		doc.Filename, len(doc.MarkdownChunks), strings.Count(doc.MarkdownOutline, "\n"))
+}
+
 // generateEmbeddings generates embeddings for all chunks in a document
 // and stores them both on the chunks and in the vector store.
+//
+// When MarkItDown has populated MarkdownChunks, those are embedded instead of
+// the basic Chunks — Smart/Enterprise retrieve over the richer representation.
+// Basic Chunks are left untouched so Standard still works.
 func (uc *PDFUseCase) generateEmbeddings(doc *proto.Document) {
 	if uc.embeddingService == nil || uc.vectorStore == nil {
 		return
 	}
 
-	if len(doc.Chunks) == 0 {
+	// Prefer markdown chunks when available; fall back to basic chunks.
+	chunks := doc.MarkdownChunks
+	isMarkdown := true
+	if len(chunks) == 0 {
+		chunks = doc.Chunks
+		isMarkdown = false
+	}
+	if len(chunks) == 0 {
 		return
 	}
 
 	// Extract texts from chunks
-	texts := make([]string, len(doc.Chunks))
-	for i, chunk := range doc.Chunks {
+	texts := make([]string, len(chunks))
+	for i, chunk := range chunks {
 		texts[i] = chunk.Text
 	}
 
-	log.Printf("Generating embeddings for %d chunks of '%s'...", len(texts), doc.Filename)
+	log.Printf("Generating embeddings for %d %s chunks of '%s'...", len(texts), map[bool]string{true: "markdown", false: "basic"}[isMarkdown], doc.Filename)
 
 	// Generate embeddings via Gemini
 	embeddings, err := uc.embeddingService.EmbedBatch(texts)
@@ -74,13 +123,13 @@ func (uc *PDFUseCase) generateEmbeddings(doc *proto.Document) {
 
 	// Store embeddings on chunks
 	for i, emb := range embeddings {
-		if i < len(doc.Chunks) && emb != nil {
-			doc.Chunks[i].Embedding = emb
+		if i < len(chunks) && emb != nil {
+			chunks[i].Embedding = emb
 		}
 	}
 
 	// Index in vector store for fast retrieval
-	uc.vectorStore.IndexChunks(doc.Chunks, embeddings)
+	uc.vectorStore.IndexChunks(chunks, embeddings)
 
 	log.Printf("Embeddings generated and indexed for '%s' (%d chunks, %d dimensions)",
 		doc.Filename, len(embeddings), services.EmbeddingDimension)
@@ -201,6 +250,10 @@ func (uc *PDFUseCase) UploadPDF(filePath string, filename string) (*proto.Upload
 		}, nil
 	}
 
+	// Enrich with MarkItDown markdown (non-fatal; falls back to basic chunks).
+	// Must run before generateEmbeddings so embeddings use markdown chunks.
+	uc.enrichWithMarkdown(doc)
+
 	// Generate embeddings for enterprise pipeline (non-blocking if it fails)
 	uc.generateEmbeddings(doc)
 
@@ -267,6 +320,10 @@ func (uc *PDFUseCase) AddDocumentToSession(sessionID string, filePath string, fi
 		}, nil
 	}
 
+	// Enrich with MarkItDown markdown (non-fatal; falls back to basic chunks).
+	// Must run before generateEmbeddings so embeddings use markdown chunks.
+	uc.enrichWithMarkdown(doc)
+
 	// Generate embeddings for enterprise pipeline
 	uc.generateEmbeddings(doc)
 
@@ -324,6 +381,10 @@ func (uc *PDFUseCase) RehydrateSession(sessionID string, filePath string, filena
 			},
 		}, nil
 	}
+
+	// Enrich with MarkItDown markdown (non-fatal; falls back to basic chunks).
+	// Must run before generateEmbeddings so embeddings use markdown chunks.
+	uc.enrichWithMarkdown(doc)
 
 	// Generate embeddings for enterprise pipeline
 	uc.generateEmbeddings(doc)

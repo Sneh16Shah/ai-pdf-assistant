@@ -1,0 +1,7 @@
+# MarkItDown sidecar dependencies.
+# [pdf] pulls only the PDF converters (pdfminer.six). Switch to markitdown[all]
+# if you want DOCX/PPTX/XLSX/image support later.
+markitdown[pdf]==0.0.16
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+python-multipart==0.0.*

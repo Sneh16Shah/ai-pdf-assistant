@@ -51,6 +51,17 @@ func main() {
 	pdfService := services.NewPDFService(uploadDir)
 	vectorSearch := services.NewVectorSearch()
 
+	// Initialize MarkItDown sidecar client (optional, local-dev only).
+	// When MARKITDOWN_URL is unset, uploads use the basic parser for all pipelines.
+	markitdownURL := os.Getenv("MARKITDOWN_URL")
+	var markitdown *services.MarkItDownService
+	if markitdownURL != "" {
+		markitdown = services.NewMarkItDownService(markitdownURL)
+		log.Printf("MarkItDown parser enabled (sidecar at %s)", markitdownURL)
+	} else {
+		log.Println("MarkItDown parser disabled (set MARKITDOWN_URL to enable; Smart/Enterprise fall back to basic chunks)")
+	}
+
 	// Initialize AI service (Gemini > Groq > Puter AI > Mock)
 	var aiService services.AIService
 	groqAPIKey := os.Getenv("GROQ_API_KEY")
@@ -102,6 +113,7 @@ func main() {
 
 	// Initialize use cases
 	pdfUseCase := usecases.NewPDFUseCase(docRepo, sessionRepo, pdfService)
+	pdfUseCase.SetMarkItDownService(markitdown)
 	chatUseCase := usecases.NewChatUseCase(sessionRepo, aiService, vectorSearch, visionService, imageGenService, pdfUseCase)
 	summaryUseCase := usecases.NewSummaryUseCase(sessionRepo, aiService)
 

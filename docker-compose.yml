@@ -20,6 +20,21 @@ services:
       timeout: 5s
       retries: 5
 
+  markitdown:
+    build:
+      context: ./markitdown-service
+      dockerfile: Dockerfile
+    container_name: askmypdf-markitdown
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   backend:
     build:
       context: ./backend
@@ -32,12 +47,19 @@ services:
       - UPLOAD_DIR=/root/uploads
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - NVIDIA_VLM_API_KEY=${NVIDIA_VLM_API_KEY:-}
+      - NVIDIA_IMAGEGEN_API_KEY=${NVIDIA_IMAGEGEN_API_KEY:-}
+      - NVIDIA_EMBED_API_KEY=${NVIDIA_EMBED_API_KEY:-}
+      - NVIDIA_RERANK_API_KEY=${NVIDIA_RERANK_API_KEY:-}
+      - MARKITDOWN_URL=${MARKITDOWN_URL:-http://markitdown:8000}
       - DATABASE_URL=postgres://askmypdf:${POSTGRES_PASSWORD}@postgres:5432/askmypdf?sslmode=disable
       - JWT_SECRET=${JWT_SECRET}
     volumes:
       - uploads_data:/root/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      markitdown:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

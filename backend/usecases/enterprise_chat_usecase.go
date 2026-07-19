@@ -94,18 +94,22 @@ func (uc *EnterpriseChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.Cha
 		Content: req.Message,
 	})
 
-	// Combine all docs
+	// Combine all docs.
+	// Enterprise pipeline prefers the MarkItDown markdown representation when
+	// available (richer structure → better hybrid retrieval + reranking),
+	// falling back to basic chunks.
 	var allChunks []*proto.Chunk
 	var fullTextBuilder strings.Builder
 	var outlineBuilder strings.Builder
 
 	for _, doc := range docs {
-		allChunks = append(allChunks, doc.Chunks...)
-		fullTextBuilder.WriteString(doc.Text)
+		chunks, text, docOutline := preferMarkdown(doc)
+		allChunks = append(allChunks, chunks...)
+		fullTextBuilder.WriteString(text)
 		fullTextBuilder.WriteString("\n\n")
-		if doc.Outline != "" {
+		if docOutline != "" {
 			outlineBuilder.WriteString(fmt.Sprintf("=== %s ===\n", doc.Filename))
-			outlineBuilder.WriteString(doc.Outline)
+			outlineBuilder.WriteString(docOutline)
 			outlineBuilder.WriteString("\n")
 		}
 	}

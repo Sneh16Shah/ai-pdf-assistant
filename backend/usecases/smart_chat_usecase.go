@@ -98,24 +98,25 @@ func (uc *SmartChatUseCase) AskQuestion(req *proto.ChatRequest) (*proto.ChatResp
 		}, nil, nil
 	}
 
-	// Collect chunks and full text from ALL documents in the session
+	// Collect chunks and full text from ALL documents in the session.
+	// Smart pipeline prefers the MarkItDown markdown representation when available
+	// (richer structure → better BM25 + TextRank retrieval), falling back to basic chunks.
 	var allChunks []*proto.Chunk
 	var fullText string
 	var outline string
 	if len(session.Documents) > 0 {
 		for _, doc := range session.Documents {
-			allChunks = append(allChunks, doc.Chunks...)
+			chunks, text, docOutline := preferMarkdown(doc)
+			allChunks = append(allChunks, chunks...)
 			// --- FIX CVE-6: Wrap document text in XML tags to prevent prompt injection ---
-			fullText += "<document name=\"" + doc.Filename + "\">\n" + doc.Text + "\n</document>\n\n"
-			if doc.Outline != "" {
-				outline += "=== " + doc.Filename + " ===\n" + doc.Outline + "\n"
+			fullText += "<document name=\"" + doc.Filename + "\">\n" + text + "\n</document>\n\n"
+			if docOutline != "" {
+				outline += "=== " + doc.Filename + " ===\n" + docOutline + "\n"
 			}
 		}
 	} else if session.Document != nil {
-		allChunks = session.Document.Chunks
-		// --- FIX CVE-6: Wrap single document content too ---
-		fullText = "<document>\n" + session.Document.Text + "\n</document>"
-		outline = session.Document.Outline
+		allChunks, fullText, outline = preferMarkdown(session.Document)
+		fullText = "<document>\n" + fullText + "\n</document>"
 	}
 
 	// === SMART PIPELINE: Build context with BM25 + TextRank + preprocessing ===

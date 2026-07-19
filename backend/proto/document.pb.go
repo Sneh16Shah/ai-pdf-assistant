@@ -12,6 +12,14 @@ type Document struct {
 	FilePath  string   `json:"file_path,omitempty"` // Absolute path to original PDF for on-demand image extraction
 	CreatedAt int64    `json:"created_at"`
 	UpdatedAt int64    `json:"updated_at"`
+
+	// Markdown representation (populated when MarkItDown sidecar is configured).
+	// Smart and Enterprise pipelines prefer these over the basic Text/Chunks.
+	// Standard pipeline ignores them. Not persisted to DB — regenerated on rehydrate.
+	MarkdownText    string   `json:"markdown_text,omitempty"`
+	MarkdownChunks  []*Chunk `json:"markdown_chunks,omitempty"`
+	MarkdownOutline string   `json:"markdown_outline,omitempty"`
+	MarkdownSource  string   `json:"markdown_source,omitempty"` // "markitdown" when populated
 }
 
 // Chunk represents a text chunk
