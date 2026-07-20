@@ -5,7 +5,9 @@ WORKDIR /app
 
 # Accept build arguments
 ARG VITE_API_URL=http://localhost:8080/api/v1
+ARG VITE_ADVANCED_PIPELINES=false
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_ADVANCED_PIPELINES=$VITE_ADVANCED_PIPELINES
 
 # Copy package files
 COPY package.json ./
